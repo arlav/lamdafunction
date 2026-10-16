@@ -10,9 +10,11 @@ The full design lives in `docs/PLAN.md`; read the section a task touches before 
 
 Update this block at the end of every session.
 
-- Phase: 0 (spikes). Nothing built yet.
-- Next: spike 2 (face frames and twist), and Rust learning path step 1 (`rng.rs`).
-- Open questions for Theo: none yet.
+- Phase: 0 (spikes). Rust learning path steps 1 to 14 built on 2026-10-15: `lamda-core` (all modules, 160 tests green, clippy and rustdoc clean), `lamda-cli` (`solve`, `validate`, `bench-gen`, `bench`), `lamda-py` (abi3 bindings, builds with maturin, Python smoke tests pass on macOS). Golden fixtures in `tests/fixtures/` (PCG32 vector, office south strip: 9 façades, 544 strips, seed-1 result pinned). Schema v1 in `schema/`.
+- Spike 4 measured (`docs/spikes/04-bitset-benchmark.md`): 18,900 slots × 400 variants solve in about 0.4 s per attempt single-threaded, release build: pass. 2,000 variants: 1.1 s setup + 1.9 s attempt. 16,000 variants: setup alone 61 s, so the full-domain support cache and sparse domains are needed before that scale.
+- Not done: spikes 1, 2, 3 (need Blender; spike 3's wheel is built but untested in Blender and on Windows/Linux), spike 5, the Python reference solver (`reference/`), the compiler (`addon/compile/`), differential tests, `scripts/build_extension.py`.
+- Next: spike 2 (face frames and twist, Python), then the Python reference solver so the differential tests can start; the `Domain` trait seam in `solve.rs` is where sparse domains go.
+- Open questions for Theo: (1) the boundary encoding in the compiled assembly (`boundary_classes` + `boundary`, see `.claude/rules/solver-core.md`) was chosen to keep connector names out of the core; confirm or change before the compiler is written. (2) `lamda-cli bench-gen` defaults to 40 extra random pairs per variant and port; with 8 the 400-variant study kit is too tight and every attempt exhausts its backtrack budget.
 
 ## Non-negotiables
 
@@ -78,8 +80,15 @@ cargo bench -p lamda-core                            # criterion; spike 4 and pe
 # Python compiler and reference solver (no Blender needed)
 python -m pytest addon/model addon/compile reference tests/python -q
 
-# Bindings into the active virtualenv
-maturin develop -m core/lamda-py/Cargo.toml
+# Bindings: maturin needs a virtualenv; .venv is gitignored. Once:
+python3 -m venv .venv && .venv/bin/pip install numpy pytest maturin
+.venv/bin/python -m maturin develop -m core/lamda-py/Cargo.toml
+.venv/bin/python -m pytest tests/python -q           # bindings smoke tests; skipped if lamda_core is not built
+
+# Headless solves and the spike-4 benchmark generator
+cargo build --release -p lamda-cli
+target/release/lamda-cli bench-gen --slots 30x30x21 --variants 400 --seed 1 --out study.json
+target/release/lamda-cli bench study.json --repeat 3
 
 # Blender 5.2 LTS, headless; the exit code makes Python failures fail the run
 blender -b --factory-startup --python-exit-code 1 --python tests/blender/run_all.py
@@ -115,14 +124,16 @@ Build `lamda-core` in this order so each file adds a few concepts to the last. S
 4. `assembly.rs`: load the compiled assembly. `serde`, `Result`, `?`, `Option`, enums, `match`, `thiserror`.
 5. `graph.rs`: slot graph in compressed (CSR) arrays. Lifetimes on methods that return slices.
 6. `adjacency.rs`: tables per port and twist. Nested `Vec`s, indexing, `debug_assert!`.
-7. `propagate.rs`: AC-3 with a `VecDeque`. Loops, early returns, error enums.
+   Then `progress.rs`: counters and the cancel flag. Atomics, interior mutability.
+7. `propagate.rs`: AC-3 with a `VecDeque`. Loops, early returns, error enums, closures as `FnMut` parameters.
 8. `entropy.rs`, `observe.rs`: entropy keys and the versioned heap. `f64`, `BinaryHeap`, `Ord`, `Reverse`.
 9. `trail.rs`: undo log and backtracking. Moves, `std::mem::take` and `replace`.
 10. `solve.rs`: the loop, with a `Domain` trait so sparse domains can come later. Traits, generics.
 11. `attempts.rs`: parallel attempts. `rayon`, closures, `Send`, `Sync`, `Arc`, atomics.
 12. `validate.rs`: independent result checker, written without reusing solver code.
+    Then `synthetic.rs`: benchmark kits with a planted solution. `Default`, `BTreeSet`.
 13. `lamda-py`: PyO3 functions and classes, NumPy arrays, releasing the GIL.
-14. `lamda-cli`: argument parsing with `std::env`, file IO, the benchmark generator, criterion benches.
+14. `lamda-cli`: argument parsing with `std::env`, file IO, the benchmark generator (`bench-gen`, using `synthetic.rs`), criterion benches in `core/lamda-core/benches/`.
 
 ## How to work with Theo
 

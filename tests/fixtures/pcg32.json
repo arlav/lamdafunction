@@ -1,0 +1,16 @@
+{
+ "new": [
+  42,
+  54
+ ],
+ "outputs": [
+  "0xa15c02b7",
+  "0x7b47f409",
+  "0xba1d3330",
+  "0x83d2f293",
+  "0xbfa4784b",
+  "0xcbed606e"
+ ],
+ "attempt_stream": "0x4C414D44",
+ "note": "PCG-XSH-RR 64/32; see .claude/rules/solver-core.md"
+}

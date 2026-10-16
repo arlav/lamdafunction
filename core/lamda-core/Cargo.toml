@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# lamda-core: the solver library. No Python, no Blender, no I/O beyond reading a
+# compiled assembly. Everything else (CLI, bindings) sits on top of this crate.
+
+[package]
+name = "lamda-core"
+description = "Wave function collapse over slot graphs: load, propagate, observe, validate"
+# `key.workspace = true` copies the value from [workspace.package] in the root manifest.
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+# The crate name has a hyphen; Rust identifiers cannot, so the library is
+# imported as `lamda_core` (`use lamda_core::rng::Pcg32;`).
+name = "lamda_core"
+
+[dependencies]
+# Each line says "use the version pinned in the workspace"; see the root
+# Cargo.toml for what every crate does and why it is here.
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rayon.workspace = true
+libm.workspace = true
+
+[dev-dependencies]
+# Only compiled for `cargo test` and `cargo bench`, never shipped.
+proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+# Criterion benchmarks live in benches/; `harness = false` lets criterion
+# provide its own `main` instead of the built-in test harness.
+name = "propagate"
+harness = false

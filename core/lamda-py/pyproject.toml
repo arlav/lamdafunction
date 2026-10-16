@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# maturin builds this directory into the `lamda-core` wheel (import name
+# `lamda_core`). Run from the repository root:
+#   maturin develop -m core/lamda-py/Cargo.toml      # into the active venv
+#   maturin build --release -m core/lamda-py/Cargo.toml
+
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "lamda-core"
+description = "Wave function collapse over slot graphs: the LamdaFunction solver core"
+requires-python = ">=3.11"
+license = "MIT OR Apache-2.0"
+dynamic = ["version"]
+dependencies = ["numpy>=1.26"]
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+# The Python module name, so `import lamda_core` works.
+module-name = "lamda_core"
+# One abi3 wheel per platform loads in every CPython >= 3.11, including
+# Blender's bundled interpreter.
+features = ["pyo3/extension-module", "pyo3/abi3-py311"]

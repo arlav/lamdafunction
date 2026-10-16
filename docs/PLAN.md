@@ -214,7 +214,7 @@ Run before every solve and list, each item clickable to select the culprit in th
 
 ### Output contract
 
-The compiler emits a versioned compiled-assembly file (JSON, with a binary twin for big envelopes): variants, per-direction adjacency, slot graph, domains, weights, priorities. The same file feeds the Rust core, the Python reference, the CLI and the tests.
+The compiler emits a versioned compiled-assembly file (JSON, with a binary twin for big envelopes): variants, per-direction adjacency, slot graph, domains, weights, priorities, boundary classes. The same file feeds the Rust core, the Python reference, the CLI and the tests. The exact fields are in `.claude/rules/solver-core.md` and `schema/compiled-assembly-v1.json`; boundary requirements travel as variant lists per connector, so the core never sees connector names.
 
 ## Solver design
 

@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Workspace manifest. A Cargo *workspace* is one `Cargo.lock` and one `target/`
+# directory shared by several crates, so they compile once and agree on versions.
+# PY: the closest Python idea is a monorepo with one shared virtualenv.
+# Rust Book: https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html
+
+[workspace]
+# `resolver = "3"` is the dependency resolver that edition 2024 crates expect.
+resolver = "3"
+# Every crate under core/ is a member. The addon (Python) is not a Cargo crate.
+members = ["core/lamda-core", "core/lamda-cli", "core/lamda-py"]
+
+# Settings shared by all members through `key.workspace = true` in their manifests.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# The oldest compiler the workspace promises to build with. Edition 2024 needs 1.85.
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["Theo Dounas, Adventurous Systems"]
+repository = "https://github.com/arlav/lamdafunction"
+
+# One place for every version number, so the crates never disagree.
+[workspace.dependencies]
+# serde: the de/serialisation framework (traits `Serialize`/`Deserialize` and the
+# derive macros). Needed to read the compiled-assembly JSON. Licence: MIT OR Apache-2.0.
+serde = { version = "1", features = ["derive"] }
+# serde_json: JSON reader/writer for serde. `float_roundtrip` makes it parse floats
+# exactly like Python's `json` does, which the determinism rules require
+# (`.claude/rules/solver-core.md`, "Floating point"). Licence: MIT OR Apache-2.0.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# thiserror: a derive macro that writes `impl std::error::Error` and `Display` for
+# error enums, so library errors are typed instead of strings. Licence: MIT OR Apache-2.0.
+thiserror = "2"
+# rayon: work-stealing thread pool with parallel iterators; runs solve attempts in
+# parallel (learning path step 11). Licence: MIT OR Apache-2.0.
+rayon = "1"
+# libm: pure-Rust `log`, `floor` and friends with the same bits on every platform,
+# so entropy keys match the Python reference. Licence: MIT OR Apache-2.0.
+libm = "0.2"
+# proptest: property-based testing, generates random inputs and shrinks failures.
+# Dev-only. Licence: MIT OR Apache-2.0.
+proptest = "1"
+# criterion: statistics-based benchmarks for spike 4. Dev-only. Licence: MIT OR Apache-2.0.
+criterion = { version = "0.5", default-features = false }
+# pyo3: Rust <-> Python bindings for lamda-py. `abi3-py311` builds one wheel that
+# every CPython >= 3.11 loads, which the Blender extension platform wants.
+# Licence: MIT OR Apache-2.0.
+pyo3 = { version = "0.25", features = ["abi3-py311"] }
+# numpy (rust-numpy): lets PyO3 functions receive and return NumPy arrays without
+# copying through Python lists. Licence: BSD-2-Clause.
+numpy = "0.25"
+
+# Release profile: what `cargo build --release`, benchmarks and wheels use.
+[profile.release]
+# Full optimisation; the default for release but stated so it is a decision.
+opt-level = 3
+# Link-time optimisation across crates: slower builds, faster solver.
+lto = "fat"
+# One code-generation unit lets the optimiser see the whole crate at once.
+codegen-units = 1
+# Keep integer-overflow checks off in release (the default); the solver uses
+# explicit `wrapping_*` arithmetic wherever overflow is intended.
+overflow-checks = false
+# `panic = "abort"` would make a panic kill Blender; keep unwinding so PyO3 can
+# turn a Rust panic into a Python exception instead.
+panic = "unwind"
+
+# Benchmarks inherit release but keep debug symbols for profilers.
+[profile.bench]
+inherits = "release"
+debug = true

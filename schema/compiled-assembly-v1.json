@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adventuroussystems.com/lamdafunction/schema/compiled-assembly-v1.json",
+  "title": "LamdaFunction compiled assembly, schema 1.0.0",
+  "description": "Written by addon/compile (Python), read by lamda-core (Rust) and reference/ (NumPy). Field meanings: .claude/rules/solver-core.md.",
+  "type": "object",
+  "required": ["schema_version", "compile_hash", "modules", "variants", "ports", "allowed", "slots", "edges", "domain_classes", "slot_domain", "variant_weight", "settings"],
+  "additionalProperties": false,
+  "$defs": {
+    "index": {"type": "integer", "minimum": 0},
+    "indexList": {"type": "array", "items": {"$ref": "#/$defs/index"}},
+    "sortedIndexList": {"type": "array", "items": {"$ref": "#/$defs/index"}, "uniqueItems": true},
+    "twist": {"type": "integer", "minimum": 0, "maximum": 3},
+    "port": {"type": "integer", "minimum": 0, "maximum": 255}
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "compile_hash": {"type": "string", "description": "Hash of the compiler's inputs; not interpreted by the solver."},
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "library_index"],
+        "properties": {
+          "name": {"type": "string"},
+          "library_index": {"$ref": "#/$defs/index"},
+          "parts": {"type": "integer", "minimum": 1, "default": 1}
+        }
+      }
+    },
+    "variants": {
+      "type": "array",
+      "description": "One entry per solver variant (module x rotation x part).",
+      "items": {
+        "type": "object",
+        "required": ["module", "rotation", "part", "anchor"],
+        "properties": {
+          "module": {"$ref": "#/$defs/index"},
+          "rotation": {"type": "integer", "minimum": 0, "maximum": 23},
+          "part": {"$ref": "#/$defs/index"},
+          "anchor": {"type": "boolean"},
+          "internal": {
+            "type": "array",
+            "description": "[port, part] pairs: the sibling part that must sit across that port (multi-cell modules).",
+            "items": {"type": "array", "prefixItems": [{"$ref": "#/$defs/port"}, {"$ref": "#/$defs/index"}], "minItems": 2, "maxItems": 2},
+            "default": []
+          }
+        }
+      }
+    },
+    "ports": {"type": "integer", "minimum": 1, "maximum": 255, "description": "Ports per slot; 6 on a box grid, in face-table order +X -X +Y -Y +Z -Z."},
+    "allowed": {
+      "type": "array",
+      "description": "For each (port, twist) the graph uses, the allowed [v, w] pairs: w may sit across port from v. Must be symmetric with the opposite port's table.",
+      "items": {
+        "type": "object",
+        "required": ["port", "twist", "pairs"],
+        "properties": {
+          "port": {"$ref": "#/$defs/port"},
+          "twist": {"$ref": "#/$defs/twist"},
+          "pairs": {"type": "array", "items": {"type": "array", "prefixItems": [{"$ref": "#/$defs/index"}, {"$ref": "#/$defs/index"}], "minItems": 2, "maxItems": 2}}
+        }
+      }
+    },
+    "slots": {"$ref": "#/$defs/index"},
+    "edges": {
+      "type": "object",
+      "description": "CSR form: slot s owns entries offsets[s]..offsets[s+1] of the four parallel arrays. Every edge has its reverse with swapped ports and the same twist.",
+      "required": ["offsets", "port", "neighbour", "neighbour_port", "twist"],
+      "properties": {
+        "offsets": {"$ref": "#/$defs/indexList"},
+        "port": {"type": "array", "items": {"$ref": "#/$defs/port"}},
+        "neighbour": {"$ref": "#/$defs/indexList"},
+        "neighbour_port": {"type": "array", "items": {"$ref": "#/$defs/port"}},
+        "twist": {"type": "array", "items": {"$ref": "#/$defs/twist"}}
+      }
+    },
+    "boundary_classes": {
+      "type": "array",
+      "description": "Each class: the connector a boundary face must carry and the variants whose face carries it.",
+      "items": {
+        "type": "object",
+        "required": ["connector", "variants"],
+        "properties": {"connector": {"type": "string"}, "variants": {"$ref": "#/$defs/sortedIndexList"}}
+      },
+      "default": []
+    },
+    "boundary": {
+      "type": "array",
+      "description": "Exposed ports with a requirement; free boundary ports are not listed.",
+      "items": {
+        "type": "object",
+        "required": ["slot", "port", "class"],
+        "properties": {"slot": {"$ref": "#/$defs/index"}, "port": {"$ref": "#/$defs/port"}, "class": {"$ref": "#/$defs/index"}}
+      },
+      "default": []
+    },
+    "domain_classes": {"type": "array", "items": {"$ref": "#/$defs/sortedIndexList"}, "description": "Distinct initial domains as ascending variant lists."},
+    "slot_domain": {"$ref": "#/$defs/indexList", "description": "One domain class index per slot."},
+    "variant_weight": {"type": "array", "items": {"type": "number"}, "description": "Base weight per variant; <= 0 removes the variant from every domain."},
+    "slot_module_weight": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}}, "description": "Optional per-slot, per-module multiplier."},
+    "priority": {"type": ["array", "null"], "items": {"type": "integer"}},
+    "fixed": {"type": ["array", "null"], "items": {"type": "integer", "minimum": -1}, "description": "Fixed variant per slot, -1 for free."},
+    "settings": {
+      "type": "object",
+      "required": ["seed", "attempts", "threads", "backtrack_budget", "max_observations", "mode"],
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0},
+        "attempts": {"type": "integer", "minimum": 1},
+        "threads": {"type": "integer", "minimum": 0, "description": "0 = all cores"},
+        "backtrack_budget": {"type": "integer", "minimum": 0},
+        "max_observations": {"type": "integer", "minimum": 0, "description": "0 = no limit"},
+        "mode": {"enum": ["collapse", "grow"]},
+        "supply_caps": {"type": ["array", "null"], "items": {"type": "integer", "minimum": -1}}
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# Rust
+/target/
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+# Build outputs
+/addon/wheels/*.whl
+/dist/
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/

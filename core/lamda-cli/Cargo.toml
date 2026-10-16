@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# lamda-cli: headless solves, the benchmark generator for spike 4, and a
+# validator, all on compiled-assembly JSON files. No Blender needed.
+
+[package]
+name = "lamda-cli"
+description = "Command-line solver, validator and benchmark generator for LamdaFunction"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+# The executable is called `lamda-cli`; its source is src/main.rs.
+name = "lamda-cli"
+path = "src/main.rs"
+
+[dependencies]
+# The solver library from this workspace. `path` makes Cargo build it from source.
+lamda-core = { path = "../lamda-core" }
+# JSON in and out of compiled assemblies; see the root Cargo.toml for licences.
+serde.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# lamda-py: the PyO3 bindings. maturin builds this crate into the `lamda_core`
+# Python module, shipped as the PyPI distribution `lamda-core` (abi3, Python
+# >= 3.11) and copied unmodified into the Blender extension's wheels/ folder.
+
+[package]
+name = "lamda-py"
+description = "Python bindings for the LamdaFunction solver"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+# The Rust library is `lamda_py`; maturin renames the built module to
+# `lamda_core` (pyproject.toml, `module-name`), and `#[pymodule(name = ..)]`
+# in lib.rs matches. Naming the Rust lib `lamda_core` too would clash with
+# the dependency crate of that name when `cargo test` links both.
+name = "lamda_py"
+# `cdylib` is the shared library Python loads; `rlib` lets `cargo test` link
+# the crate's own unit tests. Both are built.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lamda-core = { path = "../lamda-core" }
+# pyo3 and numpy: see the root Cargo.toml. The `extension-module` feature is
+# NOT enabled here on purpose: maturin turns it on through pyproject.toml, so
+# `cargo test --workspace` can still link against libpython
+# (`.claude/rules/solver-core.md`, "Progress and cancel").
+pyo3.workspace = true
+numpy.workspace = true
+serde_json.workspace = true
