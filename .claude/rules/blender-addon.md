@@ -46,9 +46,11 @@ Target Blender 5.2 LTS (Python 3.13) as the minimum. Every source file starts wi
 | `wfc_options` | int | written | Candidates left (partial results) |
 | `wfc_step` | int | written | Order of collapse, for playback |
 
-## Node groups shipped in `assets/lamda.blend`
+## Node groups, built by `addon/bl/nodes.py`
 
-- **LamdaFunction Materialise:** Instance on Points (selection: anchor and solved), Collection Info on the library with Separate Children and Reset Children, Pick Instance on, Instance Index from `wfc_module`, Rotation from `wfc_rotation`, optional Realize Instances. Separate Children orders children by name, so the instance index only matches `wfc_module` if names sort in library order. Use a hidden instancer collection whose children are named with zero-padded indices (`0000`, `0001`, …); spike 1 confirms this in 5.2.
+The groups are built from existing nodes by script at first use (and rebuilt on demand), so they stay in version control as code; an `assets/lamda.blend` export can be added later for users who want them without the add-on.
+
+- **LamdaFunction Materialise:** Instance on Points (selection: anchor and solved), Collection Info on the library with Separate Children and Reset Children, Pick Instance on, Instance Index from `wfc_module`, Rotation from `wfc_rotation`, optional Realize Instances. Separate Children orders children by natural name order (digit runs compare as numbers, case-insensitive; not link order, and `collection.children` is link order), so the instance index only matches `wfc_module` if names sort in library order. Use a hidden instancer collection whose children are named with zero-padded indices (`0000`, `0001`, …) and renamed only by the add-on; spike 1 confirmed this on 4.3.2 (`docs/spikes/01-collection-order.md`), re-check on 5.2.
 - **LamdaFunction Inspect:** colour slots by state (red contradiction, green solved, grey ramp by options left) and hide slots whose `wfc_step` is past the current frame, for playback.
 - **LamdaFunction Envelope:** voxelise a mesh at a cell size (surface wrap, fill volume, or both) and write `wfc_cell` and `wfc_size`.
 - Python add-ons cannot define new Geometry Nodes nodes, so all of this is node groups built from existing nodes. No custom node editor in v1.

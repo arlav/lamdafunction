@@ -61,3 +61,18 @@ Compiler errors met
 Exercise
 - In `bitset.rs`, add `pub fn is_disjoint(&self, other: &Bitset) -> bool` with a doc test, using `is_subset_of` and `intersects` as models. `cargo test -p lamda-core bitset` and `python scripts/check_teaching.py` must both pass (the second will fail until the `# Examples` block exists).
 - Harder: make `Propagator::propagate` generic over `D: Domain` (the trait in `solve.rs`) instead of `Bitset`. The compiler will tell you which trait methods are missing; add them to the trait.
+
+---
+
+## 2026-10-16 · Spikes, reference solver, compiler and add-on (one Rust change)
+
+Files: `core/lamda-core/src/synthetic.rs` (only Rust change; the rest of the day was Python: `addon/`, `reference/`, `tests/blender/`).
+
+Concepts introduced
+- None new. `BenchSpec::default()` now uses 40 extra pairs, matching `lamda-cli bench-gen`; the field doc explains why (synthetic.rs:38). A `Default` impl is the Rust home for "the sensible value", so a doc comment on the field is where a Python reader looks for the default's reasoning.
+
+Compiler errors met
+- None.
+
+Exercise
+- The Python reference (`reference/solver.py`) mirrors `solve.rs` function by function. Read `Solver::run_loop` in Rust next to `Solver._run_loop` in Python: every `let .. else`, `match` and `while let` has a Python twin. Then run `.venv/bin/python -m pytest tests/python/test_differential.py -q`: it solves 2,300 random assemblies in both and compares bit for bit. Change one `<` to `<=` in `_choose_variant` and watch which cases diverge first.

@@ -37,7 +37,10 @@ pub struct BenchSpec {
     /// Seed for the generator (independent of the solve seed).
     pub seed: u64,
     /// Extra random allowed neighbours per variant and port, beyond the planted
-    /// pairs. 0 makes the solve a pure propagation from any fixed slot.
+    /// pairs. 0 makes the solve a pure propagation from any fixed slot. Spike 4
+    /// found 40 gives solvable kits at 400 variants and 8 does not
+    /// (`docs/spikes/04-bitset-benchmark.md`), so 40 is the default here and in
+    /// `lamda-cli bench-gen`.
     pub extra: u32,
 }
 
@@ -48,7 +51,7 @@ impl Default for BenchSpec {
             size: [30, 30, 21],
             variants: 400,
             seed: 1,
-            extra: 8,
+            extra: 40,
         }
     }
 }

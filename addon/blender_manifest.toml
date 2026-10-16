@@ -1,0 +1,26 @@
+schema_version = "1.0.0"
+id = "lamdafunction"
+version = "0.1.0"
+name = "LamdaFunction"
+tagline = "Fill any mesh with a kit of parts by wave function collapse"
+maintainer = "Adventurous Systems"
+type = "add-on"
+blender_version_min = "5.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+platforms = ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"]
+# Wheels are copied unmodified from the PyPI build of lamda-core by
+# scripts/build_extension.py; only the ones present at build time are listed.
+wheels = [
+  "./wheels/lamda_core-0.1.0-cp311-abi3-macosx_11_0_arm64.whl",
+]
+
+[permissions]
+files = "Import and export compiled assemblies"
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "*.pyc",
+  "test_*.py",
+  ".DS_Store",
+]

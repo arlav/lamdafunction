@@ -179,7 +179,7 @@ Each frame is right-handed (u × v = outward normal).
 - A connector with offset k points along u, turned k quarter turns about the outward normal.
 - Rotating a module moves each face and its arrow; precompute a 24 × 6 table of (new face, offset change).
 - When face d of variant A meets face opp(d) of variant B, the relative twist is the angle between the two world-space arrows about A's normal. A connector pair allows the touch when both names match and that twist's flag is set. A name pairs with itself only when declared, as in Monoceros 3.
-- Define the twist function once, from world-space arrows, and test all 24 × 24 rotation pairs against a physical keyed pin-and-slot example.
+- Define the twist function once, from world-space arrows, and test all 24 × 24 rotation pairs against a physical keyed pin-and-slot example. Done in spike 2 (`docs/spikes/02-face-frames-twist.md`, `addon/compile/frames.py`): twist is the same number from both sides, and in offsets it is `(2 − k_a − k_b) mod 4`, because opposite faces' frames are mirror images.
 
 This is what makes top and bottom faces rotation-aware, which plain socket-name systems get wrong.
 
@@ -529,7 +529,7 @@ Set the minimum to Blender 5.2 LTS, released 14 July 2026 with support to July 2
 
 ### Materialisation
 
-- Ship a "LamdaFunction Materialise" node group: Instance on Points (selection: anchor and solved), Collection Info on the library with Separate Children and Reset Children, Pick Instance on, Instance Index from `wfc_module`, Rotation from `wfc_rotation`, optional Realize Instances. Separate Children orders children by name, so module collections get zero-padded index names (spike 1 confirms this in 5.2).
+- Ship a "LamdaFunction Materialise" node group: Instance on Points (selection: anchor and solved), Collection Info on the library with Separate Children and Reset Children, Pick Instance on, Instance Index from `wfc_module`, Rotation from `wfc_rotation`, optional Realize Instances. Separate Children orders children by natural name order, not link order, so a hidden instancer collection gets zero-padded index names (spike 1, `docs/spikes/01-collection-order.md`; confirmed on 4.3.2, re-check on 5.2).
 - The order of separated children must match `wfc_module` indices. That is spike 1; the fallback is a hidden instancer collection with deterministic child names.
 - "Bake" writes real objects or collection-instance empties, for export, IFC work or game engines.
 - Ship "LamdaFunction Inspect" too: slots coloured by state (red contradiction, green solved, grey ramp by options left) and a playback switch that hides slots whose `wfc_step` is past the current frame. That gives an animated collapse for lectures with no extra code.

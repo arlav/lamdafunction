@@ -8,13 +8,13 @@ The full design lives in `docs/PLAN.md`; read the section a task touches before 
 
 ## Current status
 
-Update this block at the end of every session.
+Update this block and `STATUS.md` at the end of every session. `STATUS.md` holds the detail (what exists, spike numbers, decisions, what is next); this block is the summary.
 
-- Phase: 0 (spikes). Rust learning path steps 1 to 14 built on 2026-10-15: `lamda-core` (all modules, 160 tests green, clippy and rustdoc clean), `lamda-cli` (`solve`, `validate`, `bench-gen`, `bench`), `lamda-py` (abi3 bindings, builds with maturin, Python smoke tests pass on macOS). Golden fixtures in `tests/fixtures/` (PCG32 vector, office south strip: 9 façades, 544 strips, seed-1 result pinned). Schema v1 in `schema/`.
-- Spike 4 measured (`docs/spikes/04-bitset-benchmark.md`): 18,900 slots × 400 variants solve in about 0.4 s per attempt single-threaded, release build: pass. 2,000 variants: 1.1 s setup + 1.9 s attempt. 16,000 variants: setup alone 61 s, so the full-domain support cache and sparse domains are needed before that scale.
-- Not done: spikes 1, 2, 3 (need Blender; spike 3's wheel is built but untested in Blender and on Windows/Linux), spike 5, the Python reference solver (`reference/`), the compiler (`addon/compile/`), differential tests, `scripts/build_extension.py`.
-- Next: spike 2 (face frames and twist, Python), then the Python reference solver so the differential tests can start; the `Domain` trait seam in `solve.rs` is where sparse domains go.
-- Open questions for Theo: (1) the boundary encoding in the compiled assembly (`boundary_classes` + `boundary`, see `.claude/rules/solver-core.md`) was chosen to keep connector names out of the core; confirm or change before the compiler is written. (2) `lamda-cli bench-gen` defaults to 40 extra random pairs per variant and port; with 8 the 400-variant study kit is too tight and every attempt exhausts its backtrack budget.
+- **Phase 0 signed off by Theo on 2026-10-16.** All five spikes ran (`docs/spikes/`); the Blender ones on 4.3.2, not 5.2 LTS, and spike 3 on macOS arm64 only. Re-running them on 5.2 and on Windows/Linux is phase 1 CI work.
+- **Phase 1 (MVP) built on 2026-10-16, gate pending.** `reference/` (Python reference solver, bit-identical to `lamda-core` on 2,300 random assemblies), `addon/model/`, the compiler in `addon/compile/` (tube-kit golden numbers pass), `addon/bl/` (properties, compile and solve operators, Materialise and Inspect node groups built by script, panels, overlay), `blender_manifest.toml`, `scripts/build_extension.py` (zips build), `examples/pipes.blend`, `docs/pipes-tutorial.md`. `tests/blender/test_pipes.py` compiles, solves, materialises and pins the attribute hash with both backends.
+- Gate for phase 1: a newcomer rebuilds the pipes kit from `docs/pipes-tutorial.md` alone, in Blender 5.2. Not yet tried by anyone; the UI has only run headless.
+- Decisions taken on the way are in `STATUS.md`, "Decisions". Theo can reopen any of them.
+- Next: Theo tries the tutorial interactively (UI polish will follow from that); Blender 5.2 and Windows/Linux CI; then phase 2 (backtracking is already in both solvers; multi-cell modules, twists UI, weights as attributes, growth mode, partial re-solve, seed browser).
 
 ## Non-negotiables
 
@@ -77,22 +77,27 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 python scripts/check_teaching.py                     # teaching-comment checks on every .rs file
 cargo bench -p lamda-core                            # criterion; spike 4 and perf work only
 
-# Python compiler and reference solver (no Blender needed)
-python -m pytest addon/model addon/compile reference tests/python -q
+# Python model, compiler, reference solver, bindings and differential tests (no Blender needed)
+.venv/bin/python -m pytest addon/model addon/compile reference tests/python -q
 
 # Bindings: maturin needs a virtualenv; .venv is gitignored. Once:
 python3 -m venv .venv && .venv/bin/pip install numpy pytest maturin
 .venv/bin/python -m maturin develop -m core/lamda-py/Cargo.toml
 .venv/bin/python -m pytest tests/python -q           # bindings smoke tests; skipped if lamda_core is not built
+.venv/bin/python -m maturin build --release -m core/lamda-py/Cargo.toml --out addon/wheels   # the wheel tests/blender/test_wheel.py loads
 
 # Headless solves and the spike-4 benchmark generator
 cargo build --release -p lamda-cli
 target/release/lamda-cli bench-gen --slots 30x30x21 --variants 400 --seed 1 --out study.json
 target/release/lamda-cli bench study.json --repeat 3
 
-# Blender 5.2 LTS, headless; the exit code makes Python failures fail the run
+# Blender headless; the exit code makes Python failures fail the run. Target is 5.2 LTS; on this Mac
+# `blender` is not on PATH and the installed build is 4.3.2: "/Applications/Blender 2.app/Contents/MacOS/Blender"
 blender -b --factory-startup --python-exit-code 1 --python tests/blender/run_all.py
-python scripts/build_extension.py                    # vendors reference/, then runs blender --command extension build --split-platforms
+LAMDA_NO_WHEEL=1 blender -b --factory-startup --python-exit-code 1 --python tests/blender/test_pipes.py   # the reference fallback path
+blender -b --factory-startup --python tests/blender/spike_05_foreach_set.py   # benchmark, not run by run_all
+blender -b --factory-startup --python-exit-code 1 --python scripts/make_examples.py   # rebuilds examples/pipes.blend
+python scripts/build_extension.py --blender <path>   # vendors reference/, then runs blender --command extension build --split-platforms into dist/
 ```
 
 If a command here is wrong or missing, fix this section in the same change.
