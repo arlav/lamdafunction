@@ -22,4 +22,4 @@ Separate Children uses Blender's natural string order: runs of digits compare as
 - The instancer collection is hidden and its children are named only by the add-on, because any rename re-orders the instances. Rename the user's module collections freely; the instancer is regenerated from the library order on every compile.
 - Never rely on `collection.children` matching the node's order; it is link order.
 
-Open: confirm on 5.2 LTS (`blender -b --factory-startup --python-exit-code 1 --python tests/blender/run_all.py`).
+Confirmed on Blender 5.2.2 LTS on 2026-10-17: identical order (`blender -b --factory-startup --python-exit-code 1 --python tests/blender/run_all.py`).

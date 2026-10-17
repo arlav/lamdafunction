@@ -18,3 +18,5 @@
 The `wfc_rotation` quaternion is the slowest single attribute at 1.3 ms. Everything together is under 10 ms, about 50 times inside the budget, because `foreach_set` with a contiguous array of the right dtype is a single memory copy through the buffer protocol. Passing a Python list or an array of the wrong dtype falls back to per-element conversion and is orders of magnitude slower, so the add-on must always hand over `np.ascontiguousarray(x, dtype=...)`.
 
 **Decision.** Pass, with a large margin; no need for a binary attribute path or chunked writes. The rules that keep it fast: build result arrays in the solver's dtypes (`int32`, `float32`, `bool`), flatten vectors and quaternions to `n × components`, and write with `foreach_set` into attributes created once per solve. The undo step around the write is not measured here (undo is unavailable in background mode); measure it in the modal operator in phase 1.
+
+Re-run on Blender 5.2.2 LTS (numpy 2.3.4) on 2026-10-17: 3.5 ms to create and write all eight, 1.3 ms to rewrite, 2.3 ms to read back; same decision.

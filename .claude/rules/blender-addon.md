@@ -50,10 +50,11 @@ Target Blender 5.2 LTS (Python 3.13) as the minimum. Every source file starts wi
 
 The groups are built from existing nodes by script at first use (and rebuilt on demand), so they stay in version control as code; an `assets/lamda.blend` export can be added later for users who want them without the add-on.
 
-- **LamdaFunction Materialise:** Instance on Points (selection: anchor and solved), Collection Info on the library with Separate Children and Reset Children, Pick Instance on, Instance Index from `wfc_module`, Rotation from `wfc_rotation`, optional Realize Instances. Separate Children orders children by natural name order (digit runs compare as numbers, case-insensitive; not link order, and `collection.children` is link order), so the instance index only matches `wfc_module` if names sort in library order. Use a hidden instancer collection whose children are named with zero-padded indices (`0000`, `0001`, …) and renamed only by the add-on; spike 1 confirmed this on 4.3.2 (`docs/spikes/01-collection-order.md`), re-check on 5.2.
+- **LamdaFunction Materialise:** Instance on Points (selection: anchor and solved), Collection Info on the library with Separate Children and Reset Children, Pick Instance on, Instance Index from `wfc_module`, Rotation from `wfc_rotation`, optional Realize Instances. Separate Children orders children by natural name order (digit runs compare as numbers, case-insensitive; not link order, and `collection.children` is link order), so the instance index only matches `wfc_module` if names sort in library order. Use a hidden instancer collection whose children are named with zero-padded indices (`0000`, `0001`, …) and renamed only by the add-on; spike 1 confirmed this on 4.3.2 and 5.2.2 (`docs/spikes/01-collection-order.md`).
 - **LamdaFunction Inspect:** colour slots by state (red contradiction, green solved, grey ramp by options left) and hide slots whose `wfc_step` is past the current frame, for playback.
 - **LamdaFunction Envelope:** voxelise a mesh at a cell size (surface wrap, fill volume, or both) and write `wfc_cell` and `wfc_size`.
 - Python add-ons cannot define new Geometry Nodes nodes, so all of this is node groups built from existing nodes. No custom node editor in v1.
+- Modifier inputs: Blender 5.0 replaced `modifier["Socket_3"] = value` (ID properties) with `modifier.properties.inputs.Socket_3.value` and `.attribute_name`; the old form raises "id properties not supported". Always go through `nodes.set_group_input`, which handles both.
 
 ## UI
 

@@ -25,5 +25,5 @@ The main thread polled 47 times during a 0.58 s solve, so the GIL is released fo
 **Decision.** macOS arm64 passes. The wheel targets abi3 with a 3.11 floor, so the same file is expected to load in 5.2's Python 3.13; `numpy>=1.26` in the wheel metadata is a pip-time constraint only, and the module ran against Blender 4.3's numpy 1.24 without complaint (rust-numpy checks the C API at import). Not yet done, needed for the gate:
 
 - Build and run `tests/blender/test_wheel.py` on Windows x64 and Linux x64 (CI job, `docs/PLAN.md` "CI and release"), and on macOS x64.
-- Re-run on Blender 5.2 LTS as soon as it is installed; the manifest's `blender_version_min` stays 5.2.0.
+- Done 2026-10-17: the same wheel loads in Blender 5.2.2 LTS (Python 3.13.13, numpy 2.3.4); study kit solves in 0.55 s on the worker thread, cancels in 5 ms. The built zip installs and enables with `blender --command extension install-file -r user_default --enable`, and `lamda_core` then imports from the extension's `.local/lib/python3.13/site-packages`.
 - The extension zip itself (`scripts/build_extension.py`) is phase 1 work; this spike only proves the wheel.

@@ -18,7 +18,7 @@ import bpy
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pipes_kit  # noqa: E402
 
-GOLDEN_HASH_SEED_1 = "ee1b017f2c553301"  # lamda_core wheel, seed 1, Blender 4.3.2; the reference must give the same
+GOLDEN_HASH_SEED_1 = "ee1b017f2c553301"  # seed 1; same with the wheel and the reference, on Blender 4.3.2 and 5.2.2
 
 
 def main() -> None:

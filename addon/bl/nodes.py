@@ -244,10 +244,28 @@ def attach_group(obj: bpy.types.Object, tree: bpy.types.GeometryNodeTree, name: 
     return modifier
 
 
-def set_group_input(modifier: bpy.types.NodesModifier, socket_name: str, value: object) -> None:
-    """Set a group input of a Geometry Nodes modifier by its interface name."""
-    for item in modifier.node_group.interface.items_tree:
+def input_identifier(tree: bpy.types.GeometryNodeTree, socket_name: str) -> str:
+    """The socket identifier (``Socket_3``) of a group input, from its interface name."""
+    for item in tree.interface.items_tree:
         if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name == socket_name:
-            modifier[item.identifier] = value
-            return
+            return item.identifier
     raise KeyError(socket_name)
+
+
+def set_group_input(modifier: bpy.types.NodesModifier, socket_name: str, value: object) -> None:
+    """Set a group input of a Geometry Nodes modifier by its interface name.
+
+    Blender 5.0 moved modifier inputs from ID properties (``modifier["Socket_3"]``)
+    to RNA structs: ``modifier.properties.inputs.Socket_3.value``, with an
+    ``attribute_name`` next to it for attribute-driven inputs. Item assignment
+    raises "id properties not supported for this type" there, and the new
+    attribute does not exist before 5.0, so both paths are kept while 4.x is
+    used for development.
+    """
+    identifier = input_identifier(modifier.node_group, socket_name)
+    properties = getattr(modifier, "properties", None)
+    if properties is not None:
+        getattr(properties.inputs, identifier).value = value
+    else:
+        modifier[identifier] = value
+

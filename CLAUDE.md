@@ -10,9 +10,10 @@ The full design lives in `docs/PLAN.md`; read the section a task touches before 
 
 Update this block and `STATUS.md` at the end of every session. `STATUS.md` holds the detail (what exists, spike numbers, decisions, what is next); this block is the summary.
 
-- **Phase 0 signed off by Theo on 2026-10-16.** All five spikes ran (`docs/spikes/`); the Blender ones on 4.3.2, not 5.2 LTS, and spike 3 on macOS arm64 only. Re-running them on 5.2 and on Windows/Linux is phase 1 CI work.
+- **Phase 0 signed off by Theo on 2026-10-16.** All five spikes ran (`docs/spikes/`), first on 4.3.2, then on 2026-10-17 on Blender 5.2.2 LTS with the same results. Spike 3 is macOS arm64 only; Windows/Linux is phase 1 CI work.
 - **Phase 1 (MVP) built on 2026-10-16, gate pending.** `reference/` (Python reference solver, bit-identical to `lamda-core` on 2,300 random assemblies), `addon/model/`, the compiler in `addon/compile/` (tube-kit golden numbers pass), `addon/bl/` (properties, compile and solve operators, Materialise and Inspect node groups built by script, panels, overlay), `blender_manifest.toml`, `scripts/build_extension.py` (zips build), `examples/pipes.blend`, `docs/pipes-tutorial.md`. `tests/blender/test_pipes.py` compiles, solves, materialises and pins the attribute hash with both backends.
-- Gate for phase 1: a newcomer rebuilds the pipes kit from `docs/pipes-tutorial.md` alone, in Blender 5.2. Not yet tried by anyone; the UI has only run headless.
+- Blender 5.2.2 LTS verified on 2026-10-17: Blender tests pass with both backends and the pinned hash, zips build, and the macOS arm64 zip installs and enables through `blender --command extension install-file`, with the wheel resolving from the extension's site-packages. Blender 5.0 changed how modifier inputs are set; `addon/bl/nodes.py` handles both.
+- Gate for phase 1: a newcomer rebuilds the pipes kit from `docs/pipes-tutorial.md` alone, in Blender 5.2. Not yet tried by anyone; the UI has only run headless. The extension is installed and enabled in Theo's 5.2 user repository, ready for that.
 - Decisions taken on the way are in `STATUS.md`, "Decisions". Theo can reopen any of them.
 - Next: Theo tries the tutorial interactively (UI polish will follow from that); Blender 5.2 and Windows/Linux CI; then phase 2 (backtracking is already in both solvers; multi-cell modules, twists UI, weights as attributes, growth mode, partial re-solve, seed browser).
 
@@ -91,13 +92,15 @@ cargo build --release -p lamda-cli
 target/release/lamda-cli bench-gen --slots 30x30x21 --variants 400 --seed 1 --out study.json
 target/release/lamda-cli bench study.json --repeat 3
 
-# Blender headless; the exit code makes Python failures fail the run. Target is 5.2 LTS; on this Mac
-# `blender` is not on PATH and the installed build is 4.3.2: "/Applications/Blender 2.app/Contents/MacOS/Blender"
+# Blender headless; the exit code makes Python failures fail the run. Target is 5.2 LTS. On this Mac `blender` is
+# not on PATH: 5.2.2 is "/Applications/Blender 5.2.app/Contents/MacOS/Blender", 4.3.2 is "/Applications/Blender 2.app/..."
 blender -b --factory-startup --python-exit-code 1 --python tests/blender/run_all.py
 LAMDA_NO_WHEEL=1 blender -b --factory-startup --python-exit-code 1 --python tests/blender/test_pipes.py   # the reference fallback path
 blender -b --factory-startup --python tests/blender/spike_05_foreach_set.py   # benchmark, not run by run_all
 blender -b --factory-startup --python-exit-code 1 --python scripts/make_examples.py   # rebuilds examples/pipes.blend
-python scripts/build_extension.py --blender <path>   # vendors reference/, then runs blender --command extension build --split-platforms into dist/
+python scripts/build_extension.py                    # vendors reference/, then runs blender --command extension build --split-platforms into dist/;
+                                                     # finds the newest installed Blender by itself (or --blender <path>, or BLENDER=<path>)
+blender --command extension install-file -r user_default --enable dist/lamdafunction-0.1.0-macos_arm64.zip   # install the zip headless
 ```
 
 If a command here is wrong or missing, fix this section in the same change.

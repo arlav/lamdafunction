@@ -6,12 +6,12 @@ Updated at the end of every session. The summary lives in `CLAUDE.md`, "Current 
 
 | Phase | State | Gate |
 | --- | --- | --- |
-| 0 Spikes | **Signed off by Theo on 2026-10-16** | All five spikes ran; findings in `docs/spikes/01` to `05` |
+| 0 Spikes | **Signed off by Theo on 2026-10-16** | All five spikes ran; findings in `docs/spikes/01` to `05`; re-run on 5.2.2 LTS on 2026-10-17 |
 | 1 MVP | **Built 2026-10-16; gate pending** | A newcomer rebuilds the pipes kit from `docs/pipes-tutorial.md` alone |
 | 2 Parity | Not started | The building study solves in under 1 s per attempt (already true for the core: spike 4) |
 | 3 Research | Not started | — |
 
-Carried from phase 0 into phase 1 without blocking: re-run spikes 1, 3 and 5 and the Blender tests on Blender 5.2 LTS (this Mac has 4.3.2 and 4.0.2, neither on PATH; see the Blender line in `CLAUDE.md`, "Commands"); run spike 3 on Windows x64, Linux x64 and macOS x64 (CI job).
+Carried from phase 0 into phase 1 without blocking: run spike 3 on Windows x64, Linux x64 and macOS x64 (CI job). Done on 2026-10-17: spikes 1, 3 and 5 and the Blender tests re-run on Blender 5.2.2 LTS (Python 3.13.13, numpy 2.3.4), same results and the same attribute hash.
 
 ## What exists (2026-10-16)
 
@@ -37,11 +37,11 @@ Docs: `docs/PLAN.md`, `docs/spikes/01` to `05`, `docs/pipes-tutorial.md`, `docs/
 
 | Spike | Result | Where |
 | --- | --- | --- |
-| 1 Collection order | Separate Children uses natural name order (digits numeric, case-insensitive); `collection.children` is link order; zero-padded names give library order | `docs/spikes/01-collection-order.md` |
+| 1 Collection order | Separate Children uses natural name order (digits numeric, case-insensitive); `collection.children` is link order; zero-padded names give library order; confirmed on 5.2.2 | `docs/spikes/01-collection-order.md` |
 | 2 Face frames and twist | 24-rotation numbering fixed; twist defined from world arrows, same from both sides; `(2 − k_a − k_b) mod 4` in offsets; 1,536 pin-and-slot cases pass | `docs/spikes/02-face-frames-twist.md` |
-| 3 Wheel in Blender | Loads in 4.3.2 (Python 3.11); study kit solves on a worker thread in 0.58 s with live progress; cancel in under 10 ms; macOS arm64 only | `docs/spikes/03-wheel-in-blender.md` |
+| 3 Wheel in Blender | Loads in 4.3.2 (Python 3.11) and 5.2.2 (Python 3.13, same abi3 wheel); study kit solves on a worker thread in 0.55 s with live progress; cancel in under 10 ms; installed zip resolves the wheel; macOS arm64 only | `docs/spikes/03-wheel-in-blender.md` |
 | 4 Bitset AC-3 | 18,900 slots × 400 variants: 0.15 s setup, about 0.4 s per attempt, single thread; 2,000 variants 1.1 s + 1.9 s; 16,000 variants needs the full-domain support cache and sparse domains | `docs/spikes/04-bitset-benchmark.md` |
-| 5 foreach_set | 8 attributes × 200,000 points in 2.3 ms, round-trip verified | `docs/spikes/05-foreach-set.md` |
+| 5 foreach_set | 8 attributes × 200,000 points in 2.3 ms on 4.3.2 and 3.5 ms on 5.2.2, round-trip verified | `docs/spikes/05-foreach-set.md` |
 
 ## Decisions
 
@@ -59,13 +59,13 @@ Taken while building; any can be reopened, say so and the code changes in one ta
 
 ## Phase 1, what is left before the gate
 
-- Someone follows `docs/pipes-tutorial.md` in Blender (5.2 ideally; 4.3.2 works for everything but the manifest's minimum version). The UI has only been exercised headless: the modal solve with its timer, the status bar, the overlay drawing and the panels need an interactive pass.
-- Install the built zip through Extensions → Install from Disk on 5.2 and check that the wheel resolves; on 4.3.2 the manifest's `blender_version_min` refuses the install, so testing there uses `tests/blender/pipes_kit.register_addon()` from the repository.
+- Someone follows `docs/pipes-tutorial.md` in Blender 5.2. The extension is installed and enabled in Theo's 5.2 user repository (`blender --command extension install-file -r user_default --enable`, 2026-10-17) and loads the wheel from the extension's site-packages. The UI has only been exercised headless: the modal solve with its timer, the status bar, the overlay drawing and the panels need an interactive pass.
 - Wheels for Windows x64, Linux x64 and macOS x64 (CI), listed in the manifest once they exist.
 - Nice to have, not gating: "rule from two selected faces", auto re-solve, the "Bake" to real objects, rotation of the overlay cage when the module collection is placed elsewhere.
 
 ## Open
 
-- Blender 5.2 LTS is not installed on this Mac; install it before the phase 1 Blender tests are trusted on the target version.
+- Blender 5.0 changed modifier inputs from ID properties to `modifier.properties.inputs.<identifier>.value`; `addon/bl/nodes.py` supports both and the Blender tests run on 4.3.2 and 5.2.2. Drop the 4.x path when 4.x stops being used for development.
+- `examples/pipes.blend` is now saved by 5.2.2; 4.3 can still open it for the tests, which rebuild the scene rather than load the file.
 - `ruff` is not installed in `.venv` (adding a Python package needs Theo's go); the Python code is written to be `ruff` clean but unchecked.
 - `math.log` (Python) and `libm::log` (Rust) agreed on every entropy key in 2,300 random cases; a last-ulp disagreement is still possible in principle and would show up as a differential failure, which is why the test keeps running.
