@@ -16,3 +16,7 @@ __pycache__/
 
 # Blender backup files
 *.blend1
+
+# Private agent instructions and rules, kept local
+CLAUDE.md
+.claude/rules/

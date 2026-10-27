@@ -10,6 +10,7 @@ and the boundary closed by "0".
 from __future__ import annotations
 
 import os
+import platform
 import sys
 import tempfile
 import zipfile
@@ -30,6 +31,23 @@ MODULES = {
 }
 
 
+def pick_wheel(wheels: list[Path]) -> Path | None:
+    """The wheel built for this platform, or None.
+
+    CI puts all four platform wheels in ``addon/wheels``; the tag in the file
+    name (``macosx_11_0_arm64``, ``win_amd64``, ``manylinux_2_28_x86_64``) says
+    which one the running interpreter can import.
+    """
+    if sys.platform == "darwin":
+        wanted = ("macosx", "arm64" if platform.machine() == "arm64" else "x86_64")
+    elif sys.platform.startswith("win"):
+        wanted = ("win_amd64",)
+    else:
+        wanted = ("manylinux", "x86_64")
+    matching = [w for w in wheels if all(tag in w.name for tag in wanted)]
+    return sorted(matching)[-1] if matching else None
+
+
 def setup_paths() -> str:
     """Put the repository and the built wheel (if any) on ``sys.path``; returns which solver will load.
 
@@ -37,10 +55,10 @@ def setup_paths() -> str:
     """
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    wheels = sorted((ROOT / "addon" / "wheels").glob("lamda_core-*.whl"))
-    if wheels and not os.environ.get("LAMDA_NO_WHEEL"):
+    wheel = pick_wheel(list((ROOT / "addon" / "wheels").glob("lamda_core-*.whl")))
+    if wheel is not None and not os.environ.get("LAMDA_NO_WHEEL"):
         target = Path(tempfile.mkdtemp(prefix="lamda_core_wheel_"))
-        with zipfile.ZipFile(wheels[-1]) as archive:
+        with zipfile.ZipFile(wheel) as archive:
             archive.extractall(target)
         sys.path.insert(0, str(target))
         return "wheel"

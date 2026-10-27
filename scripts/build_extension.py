@@ -5,8 +5,9 @@ Steps (``.claude/rules/blender-addon.md``, "Packaging"):
 
 1. Copy ``reference/`` into ``addon/vendor/lamda_reference/`` (gitignored), so
    the shipped extension can solve without the native wheel.
-2. Check that every wheel the manifest lists is present in ``addon/wheels/``
-   (they come unmodified from ``maturin build --release``).
+2. Rewrite the manifest's ``wheels`` list from the files in ``addon/wheels/``
+   (they come unmodified from ``maturin build --release``; CI drops in all
+   four platforms, a developer machine usually has one).
 3. Run ``blender --command extension build --split-platforms --source-dir addon
    --output-dir dist``.
 
@@ -52,20 +53,26 @@ def vendor_reference() -> None:
     print(f"vendored reference/ into {target.relative_to(ROOT)}")
 
 
-def listed_wheels() -> list[str]:
-    """Wheel paths from the manifest."""
-    manifest = (ADDON / "blender_manifest.toml").read_text(encoding="utf-8")
-    block = re.search(r"wheels\s*=\s*\[(.*?)\]", manifest, re.S)
-    if block is None:
-        return []
-    return re.findall(r'"([^"]+)"', block.group(1))
+WHEEL_BLOCK = re.compile(r"wheels\s*=\s*\[.*?\]", re.S)
 
 
-def check_wheels() -> None:
-    """Every listed wheel must exist; the extension platform rejects a manifest that lies."""
-    missing = [w for w in listed_wheels() if not (ADDON / w).exists()]
-    if missing:
-        sys.exit(f"missing wheels: {', '.join(missing)}; build them with maturin build --release --out addon/wheels")
+def sync_wheels() -> list[str]:
+    """Rewrite the manifest's ``wheels`` list from the files in ``addon/wheels``.
+
+    The extension platform rejects a manifest naming a wheel that is absent, and
+    the wheels present differ between a developer's machine (one platform) and
+    CI (all four), so the list is always generated from what is there. The
+    manifest's comment above the list says so.
+    """
+    path = ADDON / "blender_manifest.toml"
+    manifest = path.read_text(encoding="utf-8")
+    wheels = sorted(f"./wheels/{w.name}" for w in (ADDON / "wheels").glob("lamda_core-*.whl"))
+    block = "wheels = [\n" + "".join(f'  "{w}",\n' for w in wheels) + "]" if wheels else "wheels = []"
+    if WHEEL_BLOCK.search(manifest) is None:
+        sys.exit("blender_manifest.toml has no wheels list to update")
+    path.write_text(WHEEL_BLOCK.sub(block, manifest, count=1), encoding="utf-8")
+    print(f"manifest lists {len(wheels)} wheel(s): {', '.join(Path(w).name for w in wheels) or 'none, Python solver only'}")
+    return wheels
 
 
 def installed_blenders() -> list[Path]:
@@ -120,7 +127,7 @@ def main() -> None:
     parser.add_argument("--output", default=str(ROOT / "dist"), help="output directory for the zips")
     args = parser.parse_args()
     vendor_reference()
-    check_wheels()
+    sync_wheels()
     blender = find_blender(args.blender)
     Path(args.output).mkdir(parents=True, exist_ok=True)
     command = [

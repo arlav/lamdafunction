@@ -11,7 +11,7 @@
 //! (index newtypes), `progress.rs` (counters and cancel flag), `synthetic.rs`
 //! (benchmark kits with a planted solution, for spike 4).
 //!
-//! Read the files in the order of the Rust learning path in `CLAUDE.md`:
+//! Read the files in the order of the Rust learning path in `LEARNING.md` at the repository root:
 //! `rng`, `bitset`, `ids`, `assembly`, `graph`, `adjacency`, `progress`,
 //! `propagate`, `entropy`, `observe`, `trail`, `solve`, `attempts`, `validate`.
 //!

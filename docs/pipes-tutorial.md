@@ -6,8 +6,25 @@ What you make: six pipe pieces that connect only where a pipe meets a pipe, fill
 
 ## 1. Install
 
-1. Build or download the extension zip for your platform (`python scripts/build_extension.py`, or a release). In Blender: Edit → Preferences → Get Extensions → the drop-down arrow → Install from Disk.
-2. In the 3D viewport press `N` and open the **LamdaFunction** tab in the sidebar.
+You need Blender 5.2 or newer and one extension zip for your platform. Get the zip in one of two ways.
+
+**Download it.** Go to <https://github.com/arlav/lamdafunction/releases>, open the latest release and download the zip for your machine: `lamdafunction-<version>-windows_x64.zip`, `-macos_arm64.zip` (Apple Silicon), `-macos_x64.zip` (Intel Mac) or `-linux_x64.zip`. If your teacher sent you a zip, that is the same file.
+
+**Or build it.** Clone <https://github.com/arlav/lamdafunction>, install Blender, and run from the repository root:
+
+```
+python scripts/build_extension.py
+```
+
+It finds your Blender, vendors the Python solver and writes the four zips into `dist/`. To include the native solver as well, build its wheel first (`maturin build --release -m core/lamda-py/Cargo.toml --out addon/wheels`, needs Rust) and list it in `addon/blender_manifest.toml`.
+
+Then install the zip:
+
+1. In Blender: Edit → Preferences → Get Extensions. Click the drop-down arrow at the top right of that page and choose **Install from Disk**. Pick the zip.
+2. Still in Preferences, open **Add-ons**, search for `lamda` and make sure **LamdaFunction** is ticked.
+3. In the 3D viewport press `N` and open the **LamdaFunction** tab in the sidebar. If you do not see it, the sidebar has more tabs than fit: scroll the tab strip or drag the sidebar wider.
+
+Windows and Linux zips currently solve with the pure Python solver; the macOS Apple Silicon zip also carries the native one. For this tutorial there is no difference.
 
 ## 2. The library
 

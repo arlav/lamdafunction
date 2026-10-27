@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Kits: modules with connectors on their faces, connector pairs, and rules.
 
-Vocabulary (``CLAUDE.md``, "Glossary"): a *module* is an authored part; a
+Vocabulary (``Learning.md``, "Glossary"): a *module* is an authored part; a
 *connector* is a name on one of its six faces plus a quarter-turn offset; a
 *connector pair* says two names may touch and at which twists; a *rule*
 names two module faces directly. Face indices follow

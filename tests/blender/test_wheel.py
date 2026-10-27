@@ -33,11 +33,13 @@ GOLDEN_SEED_1 = [0, 1, 2, 0, 1, 2, 0, 3, 4, 5, 3, 4, 5, 6]
 
 
 def load_wheel() -> object:
-    """Unpack the newest wheel in ``addon/wheels`` onto ``sys.path`` and import it."""
-    wheels = sorted((ROOT / "addon" / "wheels").glob("lamda_core-*.whl"))
-    if not wheels:
-        raise SystemExit("no wheel in addon/wheels: run maturin build --release -m core/lamda-py/Cargo.toml --out addon/wheels")
-    wheel = wheels[-1]
+    """Unpack this platform's wheel from ``addon/wheels`` onto ``sys.path`` and import it."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from pipes_kit import pick_wheel  # noqa: PLC0415 - the tests dir is only on sys.path from here
+
+    wheel = pick_wheel(list((ROOT / "addon" / "wheels").glob("lamda_core-*.whl")))
+    if wheel is None:
+        raise SystemExit("no wheel for this platform in addon/wheels: run maturin build --release -m core/lamda-py/Cargo.toml --out addon/wheels")
     target = Path(tempfile.mkdtemp(prefix="lamda_core_wheel_"))
     with zipfile.ZipFile(wheel) as archive:
         archive.extractall(target)

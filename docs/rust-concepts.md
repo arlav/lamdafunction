@@ -1,6 +1,6 @@
 # Rust concepts index
 
-One row per Rust concept used in this codebase, pointing to the first place its teaching comment explains it. Claude Code adds a row whenever a file introduces a new concept. Sorted by the order they appear in the Rust learning path (`CLAUDE.md`). Line numbers are approximate; grep the `RUST:` tag nearby.
+One row per Rust concept used in this codebase, pointing to the first place its teaching comment explains it. A row is added whenever a file introduces a new concept. Sorted by the order of the Rust learning path in [LEARNING.md](../LEARNING.md). Line numbers are approximate; grep the `RUST:` tag nearby.
 
 | Concept | First explained at | The Rust Book | Notes |
 | --- | --- | --- | --- |
