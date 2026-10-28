@@ -204,4 +204,4 @@ Backtracking and parallel attempts are already in both solvers.
 
 The permissive licence on the solver lets other hosts and tools reuse it; Apache-2.0 and MIT are both compatible with the GPL, so the extension can bundle it. Every source file carries an SPDX line. Copyright 2026 Theo Dounas.
 
-LamdaFunction is made by Theo Dounas, [Adventurous Systems](https://github.com/arlav). Issues and pull requests are welcome.
+LamdaFunction is made by Dr Theo Dounas, [Adventurous Systems](https://www.adventurous.systems/). Issues and pull requests are welcome.
