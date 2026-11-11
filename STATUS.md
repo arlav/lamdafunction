@@ -60,7 +60,7 @@ Taken while building; any can be reopened, say so and the code changes in one ta
 
 ## Next: phase 2, surfaces
 
-Plan and iterations S0 to S7 are in `docs/PLAN.md`, "Surfaces (phase 2)". Before S0 starts, Theo says go and settles the five decisions in its last table (numbering, edge types, freedom on surfaces, non-quad faces, deformation route). S0 is two spikes: trilinear deformation in Geometry Nodes (spike 6) and edge types and seams on quad meshes (spike 7).
+Plan and iterations S0 to S8 are in `docs/PLAN.md`, "Surfaces (phase 2)". Theo settled the five decisions on 2026-11-11: surfaces are phase 2; edges keyed by (port, neighbour port, twist) in schema 1.1; the shell is built from Blender's mesh data into a host-neutral cell envelope (`addon/model/cells.py`) that Topologic and SpaceTope importers will produce later; a cross field aligned to principal curvature, smoothed across edges with neighbouring normals, with an optional guide; non-quad faces skipped and listed in the audit; deformation in Geometry Nodes. S0 is two spikes: trilinear deformation in Geometry Nodes (spike 6), and curvature, cross field and seams on test meshes (spike 7). Waiting for Theo's go to start S0.
 
 Carried over from phase 1, not gating:
 - First release done on 2026-11-11: `v0.1.0` at `7324d78`, with the four zips, `pipes-tutorial.pdf` and `pipes.blend`; notes in `docs/release-notes/v0.1.0.md` (the workflow uses `docs/release-notes/<tag>.md` when present). macOS wheels now build on `macos-latest`, because GitHub retired `macos-14`.
