@@ -7,11 +7,12 @@ Updated at the end of every session. Dates are absolute.
 | Phase | State | Gate |
 | --- | --- | --- |
 | 0 Spikes | **Signed off by Theo on 2026-10-16** | All five spikes ran; findings in `docs/spikes/01` to `05`; re-run on 5.2.2 LTS on 2026-10-17 |
-| 1 MVP | **Built 2026-10-16; gate pending** | A newcomer rebuilds the pipes kit from `docs/pipes-tutorial.md` alone |
-| 2 Parity | Not started (CI/release workflow written 2026-10-24, first run pending a push) | The building study solves in under 1 s per attempt (already true for the core: spike 4) |
-| 3 Research | Not started | — |
+| 1 MVP | **Gate passed, Theo, 2026-11-10** | A newcomer rebuilds the pipes kit from `docs/pipes-tutorial.md` alone |
+| 2 Surfaces | **Planned 2026-11-10** (`docs/PLAN.md`, "Surfaces (phase 2)"); waiting for Theo's go and the decisions listed there | Pipes kit wrapped onto a quad sphere and a two-layer freeform from `docs/surface-tutorial.md` alone, watertight |
+| 3 Parity | Not started (was phase 2 until 2026-11-10) | The building study solves in under 1 s per attempt (already true for the core: spike 4) |
+| 4 Beyond parity, research | Not started (was phase 3) | — |
 
-Carried from phase 0 into phase 1 without blocking: run spike 3 on Windows x64, Linux x64 and macOS x64 (CI job). Done on 2026-10-17: spikes 1, 3 and 5 and the Blender tests re-run on Blender 5.2.2 LTS (Python 3.13.13, numpy 2.3.4), same results and the same attribute hash.
+Carried from phase 0 into phase 1 without blocking: run spike 3 on Windows x64, Linux x64 and macOS x64 (CI job). Done on 2026-10-28: the first green CI run (commit `169a1f7`) built all four wheels and ran the Blender suite on Linux and Windows. Done on 2026-10-17: spikes 1, 3 and 5 and the Blender tests re-run on Blender 5.2.2 LTS (Python 3.13.13, numpy 2.3.4), same results and the same attribute hash.
 
 ## What exists (2026-10-16)
 
@@ -54,19 +55,21 @@ Taken while building; any can be reopened, say so and the code changes in one ta
 5. **Explicit rules under rotation** (`addon/compile/rules.py`). An allowed rule `a:fa -> b:fb` describes a reference placement (b turned by the reference rotation that brings `fb` opposite `fa`); with both modules rotatable the pair rotates rigidly, with at most one rotatable that side takes every rotation that puts its face across. Disallowed removes the two faces' touches in every rotation. Exclusive keeps only each other on those faces.
 6. **Fixed slots** (`wfc_fix`, a module index) restrict the slot's domain to that module's variants; the compiled `fixed` field (a variant index) stays unused by the compiler.
 7. **Node groups are built by script** in `addon/bl/nodes.py`, not shipped in `assets/lamda.blend`; the rule file was updated. An export to a .blend can follow.
-8. **Multi-cell completeness** is checked by the validator through an optional `internal` list per variant (`[port, part]` pairs); the solver only sees allowed pairs. Multi-cell modules themselves are phase 2.
+8. **Multi-cell completeness** is checked by the validator through an optional `internal` list per variant (`[port, part]` pairs); the solver only sees allowed pairs. Multi-cell modules themselves are phase 3 (parity).
 9. **Reference solver scope.** The spec said the phase 1 reference has no backtracking; it has it, mirroring `trail.rs`, so the differential tests cover the backtracking path too. Both languages still agree bit for bit.
 
-## Phase 1, what is left before the gate
+## Next: phase 2, surfaces
 
-- Someone follows `docs/pipes-tutorial.md` in Blender 5.2. The extension is installed and enabled in Theo's 5.2 user repository (`blender --command extension install-file -r user_default --enable`, 2026-10-17) and loads the wheel from the extension's site-packages. The UI has only been exercised headless: the modal solve with its timer, the status bar, the overlay drawing and the panels need an interactive pass.
-- First run of `.github/workflows/ci.yml` (written 2026-10-24, untested until pushed): it builds the wheels for Windows x64, Linux x64, macOS arm64 and x64, runs the Blender suite on Linux and Windows with the matching wheel (spike 3 on those platforms), and on a `v*` tag releases the zips, `docs/pipes-tutorial.pdf` and `examples/pipes.blend`. `scripts/build_extension.py` now generates the manifest's wheel list from `addon/wheels/`, and the Blender tests pick the wheel of their platform.
-- Nice to have, not gating: "rule from two selected faces", auto re-solve, the "Bake" to real objects, rotation of the overlay cage when the module collection is placed elsewhere.
+Plan and iterations S0 to S7 are in `docs/PLAN.md`, "Surfaces (phase 2)". Before S0 starts, Theo says go and settles the five decisions in its last table (numbering, edge types, freedom on surfaces, non-quad faces, deformation route). S0 is two spikes: trilinear deformation in Geometry Nodes (spike 6) and edge types and seams on quad meshes (spike 7).
+
+Carried over from phase 1, not gating:
+- First release: no `v*` tag pushed yet, so the releases page `docs/pipes-tutorial.md` points at is empty. Tag `v0.1.0` (it must equal `version` in `addon/blender_manifest.toml` and `Cargo.toml`).
+- Nice to have: "rule from two selected faces", auto re-solve, "Bake" to real objects, rotating the overlay cage when the module collection is placed elsewhere.
 
 ## Open
 
 - Blender 5.0 changed modifier inputs from ID properties to `modifier.properties.inputs.<identifier>.value`; `addon/bl/nodes.py` supports both and the Blender tests run on 4.3.2 and 5.2.2. Drop the 4.x path when 4.x stops being used for development.
-- `docs/pipes-tutorial.md` points students at the GitHub releases page; no release exists until the first `v0.1.0` tag is pushed and CI succeeds. `docs/pipes-tutorial.pdf` is generated by `scripts/md2pdf.py` (headless Chrome) and should be regenerated after edits.
+- `docs/pipes-tutorial.md` points students at the GitHub releases page; no release exists until the first `v0.1.0` tag is pushed (CI itself is green since 2026-10-28). `docs/pipes-tutorial.pdf` is generated by `scripts/md2pdf.py` (headless Chrome) and should be regenerated after edits.
 - `examples/pipes.blend` is now saved by 5.2.2; 4.3 can still open it for the tests, which rebuild the scene rather than load the file.
 - `ruff` is not installed in `.venv` (adding a Python package needs Theo's go); the Python code is written to be `ruff` clean but unchecked.
 - `math.log` (Python) and `libm::log` (Rust) agreed on every entropy key in 2,300 random cases; a last-ulp disagreement is still possible in principle and would show up as a differential failure, which is why the test keeps running.

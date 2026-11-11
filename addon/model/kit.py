@@ -8,7 +8,7 @@ names two module faces directly. Face indices follow
 ``addon/compile/frames.py``: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z.
 
 Phase 1 covers single-cell modules; the footprint fields for multi-cell
-modules arrive in phase 2 without changing what is here.
+modules arrive in phase 3 without changing what is here.
 """
 
 from __future__ import annotations

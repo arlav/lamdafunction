@@ -131,27 +131,27 @@ Every Monoceros 3 concept has a Blender home; most become a property on a collec
 
 | Monoceros 3 | Blender equivalent | Phase |
 | --- | --- | --- |
-| Module (name, cells, geometry) | A collection inside a "LamdaFunction Library" collection, with a `lamdafunction` property group: name, footprint cells (anchor first), default weight, tags | 1 single-cell, 2 multi-cell |
+| Module (name, cells, geometry) | A collection inside a "LamdaFunction Library" collection, with a `lamdafunction` property group: name, footprint cells (anchor first), default weight, tags | 1 single-cell, 3 multi-cell |
 | Rotational Freedom | Enum on the module: None / X / Y / Z / Full; variants exist only in the compiled assembly, never as objects | 1 |
 | Module preview | GPU overlay: cell cage, axis-coloured face arrows, face labels, name | 1 |
 | Face ID (`+X`…`-Z`, cell ordinal) | Same text syntax, so rules paste between tools | 1 |
-| Rule (allowed / disallowed / exclusive) | Scene-level rule list with text entry `a:+X -> b:-X`, "rule from two selected faces", and "rule from a line drawn between faces" | 1, 2 |
-| Connector, Connector Pair, twist flags | Per-face connector name plus quarter-turn offset; a scene-level pair table with four twist checkboxes | names 1, twists 2 |
-| Terminator, Require Terminators | Per-face toggle; solver setting | 2 |
+| Rule (allowed / disallowed / exclusive) | Scene-level rule list with text entry `a:+X -> b:-X`, "rule from two selected faces", and "rule from a line drawn between faces" | 1, 3 |
+| Connector, Connector Pair, twist flags | Per-face connector name plus quarter-turn offset; a scene-level pair table with four twist checkboxes | names 1, twists 3 |
+| Terminator, Require Terminators | Per-face toggle; solver setting | 3 |
 | Indifference | Solver setting, on by default | 1 |
-| Detect Rules from Geometry / Voxels | Operator that samples each face's boundary geometry, canonicalises it and hashes it into connector names | 2 geometry, 3 voxels |
-| Touching Faces from Slots | "Learn rules from example": place module instances by hand, extract every touching face pair | 2 |
-| Cell, Homogeneous / Heterogeneous Grid | Envelope object: one vertex per slot centre, `wfc_cell` attribute (a float vector holding whole numbers, because Blender has no 3-component integer attribute), optional `wfc_size`; box and size-list operators | 1, 2 |
+| Detect Rules from Geometry / Voxels | Operator that samples each face's boundary geometry, canonicalises it and hashes it into connector names | 3 geometry, 4 voxels |
+| Touching Faces from Slots | "Learn rules from example": place module instances by hand, extract every touching face pair | 3 |
+| Cell, Homogeneous / Heterogeneous Grid | Envelope object: one vertex per slot centre, `wfc_cell` attribute (a float vector holding whole numbers, because Blender has no 3-component integer attribute), optional `wfc_size`; box and size-list operators | 1, 3 |
 | Cells from Geometry | Operator plus GN asset: voxelise a mesh by surface wrap, fill volume, or both | 1 |
-| Add Boundary Layer, Are Cells Boundary, Neighbor Cells | GN assets on the envelope: dilate, boundary flag, n-ring selection | 2 |
-| Slot allowed modules and weights | Float point attributes `wfc_w:<module>` or `wfc_w:#<tag>`; ≤ 0 removes the module; authored with GN (proximity, noise, painted masks) | 2 |
-| Slot Priorities | Int point attribute `wfc_priority` | 2 |
+| Add Boundary Layer, Are Cells Boundary, Neighbor Cells | GN assets on the envelope: dilate, boundary flag, n-ring selection | 3 |
+| Slot allowed modules and weights | Float point attributes `wfc_w:<module>` or `wfc_w:#<tag>`; ≤ 0 removes the module; authored with GN (proximity, noise, painted masks) | 3 |
+| Slot Priorities | Int point attribute `wfc_priority` | 3 |
 | Construct Assembly + Audit | "Compile" operator producing a versioned compiled-assembly JSON and an audit panel | 1 |
-| WFC Solver | "Solve" operator: seed, attempts, return-first, max observations, backtrack budget, threads; runs in the background | 1 Python, 2 Rust |
-| Multiple solutions | "Solve variations": N seeds into a seed browser on one Assembly object | 2 |
-| Growth Solver, supply caps | Solver mode "Grow" with a supply table | 2 |
+| WFC Solver | "Solve" operator: seed, attempts, return-first, max observations, backtrack budget, threads; runs in the background | 1 (Python and Rust) |
+| Multiple solutions | "Solve variations": N seeds into a seed browser on one Assembly object | 3 |
+| Growth Solver, supply caps | Solver mode "Grow" with a supply table | 3 |
 | Materialize Assembly | Assembly object plus a shipped "LamdaFunction Materialise" node group that instances the library; "Bake" to real objects or collection instances | 1 |
-| Export Project | JSON export of compiled assembly plus solve state | 2 |
+| Export Project | JSON export of compiled assembly plus solve state | 3 |
 
 ## Rule compiler
 
@@ -365,13 +365,13 @@ Read it as: variant v\_b may sit across edge e from variant v\_a when v\_b is in
 | Algorithm | What it does for WFC | Where it comes from | Phase |
 | --- | --- | --- | --- |
 | Arc consistency (AC-3, AC-4) over adjacency lists | Propagation, unchanged from grids | lamda-core | 1 |
-| Breadth-first search, Dijkstra | Growth order, and weight fields by depth from the entrance or distance to the façade | lamda-core; networkx to prototype | 2 |
-| Labelled isomorphism (Weisfeiler–Lehman hashing) | Count genuinely different solutions and drop duplicates across seeds | networkx (TGraph's `IsIsomorphic` ignores labels) | 2 |
-| Betweenness, closeness, space-syntax integration | Priority and weight fields (resolve busy slots first) and option scores | networkx; TGraph betweenness (its `Integration` call failed on 0.9.71) | 2–3 |
-| Articulation points, bridges, biconnected components | Keep circulation connected during the solve and flag single points of failure | lamda-core, incrementally; TGraph after the solve | 3 |
-| Disjoint paths, minimum cut | Egress: at least two independent routes from every room | TGraph `DisjointPaths` and `MinimumCut` on the solved graph | 3 |
-| Graph partitioning | Solve in blocks on subgraphs, one room or cluster at a time, in parallel | lamda-core | 3 |
-| Labelled subgraph matching | Learn rules from examples; forbid motifs such as dead-end corridors | TGraph `Match`; networkx VF2 | 3 |
+| Breadth-first search, Dijkstra | Growth order, and weight fields by depth from the entrance or distance to the façade | lamda-core; networkx to prototype | 3 |
+| Labelled isomorphism (Weisfeiler–Lehman hashing) | Count genuinely different solutions and drop duplicates across seeds | networkx (TGraph's `IsIsomorphic` ignores labels) | 3 |
+| Betweenness, closeness, space-syntax integration | Priority and weight fields (resolve busy slots first) and option scores | networkx; TGraph betweenness (its `Integration` call failed on 0.9.71) | 3–4 |
+| Articulation points, bridges, biconnected components | Keep circulation connected during the solve and flag single points of failure | lamda-core, incrementally; TGraph after the solve | 4 |
+| Disjoint paths, minimum cut | Egress: at least two independent routes from every room | TGraph `DisjointPaths` and `MinimumCut` on the solved graph | 4 |
+| Graph partitioning | Solve in blocks on subgraphs, one room or cluster at a time, in parallel | lamda-core | 4 |
+| Labelled subgraph matching | Learn rules from examples; forbid motifs such as dead-end corridors | TGraph `Match`; networkx VF2 | 4 |
 | Exact constraint solving (CP-SAT) | Small room-level graphs solved exactly instead of sampled | OR-Tools, as SpaceTope already does | research |
 
 TGraph behaviour is taken from SpaceTope's own verified [TopologicPy notes](https://github.com/Adventurous-Systems/spacetope/blob/m9-stretch/docs/TOPOLOGICPY_NOTES.md).
@@ -408,7 +408,7 @@ The example is illustrative: SpaceTope's `eight_rooms_corridor` fixture has no c
 
 ### What WFC details, layer by layer
 
-WFC suits layers built from a repeating kit with local rules. The façade is the safest first target; fit-out needs the route and clearance rules from phase 3 before its results are reliable.
+WFC suits layers built from a repeating kit with local rules. The façade is the safest first target; fit-out needs the route and clearance rules from phase 4 before its results are reliable.
 
 | Layer | Slots | Kit parts | Rules that make it work | Fit for WFC |
 | --- | --- | --- | --- | --- |
@@ -547,14 +547,81 @@ An optional auto re-solve watches the library, rules and envelope hash after eac
 
 - A "LamdaFunction" sidebar tab with panels for Library, Faces and Connectors, Rules, Envelope, Solve, and Results and Audit.
 - A viewport overlay draws module cages, face arrows coloured by axis (X red, Y green, Z blue), rule curves between faces in a module catalogue layout, and slot states.
-- In phase 2, a gizmo group lets you click a face arrow to select it and drag from one face to another to create a rule.
+- In phase 3, a gizmo group lets you click a face arrow to select it and drag from one face to another to create a rule.
 - No custom node editor in v1. Add-ons cannot define new Geometry Nodes nodes in Python, and a separate node system is costly to maintain; panels plus Geometry Nodes assets cover the workflow.
+
+## Surfaces (phase 2)
+
+Planned on 2026-11-10, after phase 1 passed. The goal: you give LamdaFunction a kit and a mesh surface, such as a quad sphere or a freeform shaped with a Subdivision Surface modifier, and it fills a shell that follows the surface. The shell is one layer of slots on the faces, or several layers through a thickness. Module geometry bends into each cell, so a pipe stays continuous over a curved surface.
+
+### Why it fits what exists
+
+The solver is already graph-first, and a shell grown from a quad mesh is the simplest cell complex: each (face, layer) is a hexahedral slot with the usual six ports, so kits, rotations, connectors and rules carry over unchanged. Of the three things "The same algorithm on two data structures" says change on a cell complex, this phase builds all three: how a neighbour is found (shared mesh edges), how a direction is translated across an edge (edge types, below), and how geometry is placed (trilinear deformation). It pulls the hexahedral part of "Cell-complex envelopes" forward, and SpaceTope and Topologic complexes reuse it later.
+
+### The shell model
+
+- **Source.** The evaluated mesh of the envelope object in world space, so modifiers (Subdivision Surface, Solidify for previews, Geometry Nodes) count. Quads become slots. Triangles and n-gons are skipped and listed in the audit: Catmull-Clark subdivision gives all quads from level 1, and a UV sphere's poles are triangles, so the tutorial uses a subdivided cube ("quad sphere"). Edges shared by three or more faces are an audit error.
+- **Layers.** Thickness `t`, layer count `n` and an offset (outward, inward or centred). Corner `i` of layer boundary `k` is `vertex_i + normal_i × (offset + t·k/n)`, using smooth vertex normals so neighbouring cells share their corners. A per-vertex `wfc_thickness` attribute scales `t` (iteration S6).
+- **Slot frame, combinatorial.** A quad's corners `c0…c3` come in Blender's loop order, counter-clockwise seen from the normal. Unit-cell corners map as `(0,0)→c0`, `(1,0)→c1`, `(1,1)→c2`, `(0,1)→c3`, with `z` from the inner to the outer layer boundary. So port −Y is edge `c0c1`, +X is `c1c2`, +Y is `c2c3`, −X is `c3c0`, −Z faces inward and +Z outward.
+- **Edges.** Across a mesh edge, slot A's port `p` meets slot B's port `q`, both read from the shared edge. The relative rotation `R` that takes B's frame onto the frame a regular-grid neighbour of A would have is worked out from which corner of A's edge equals which corner of B's, never from float geometry, so a strongly curved or non-planar quad cannot flip it. In a consistently oriented mesh `R` is a quarter turn about the normal, `k ∈ 0..4`. An inconsistent orientation (the shared edge runs the same way in both faces) gives a flip, which still compiles, with an audit warning. Between layers, +Z of layer `k` meets −Z of layer `k+1` with twist 0, as on a box grid.
+- **Exposed ports.** The outer top, the inner bottom, and the sides along open mesh boundaries. Phase 1's single boundary policy applies to all of them first; per-group policies (top, bottom, rim) follow in S6.
+
+### Contract change: edge types (schema 1.1)
+
+The core keys its tables by (port, twist) and assumes `neighbour_port = opposite(port)`. On a closed quad mesh no choice of frames keeps that everywhere (the eight three-valent vertices of a quad sphere force seams), so A's +X often meets B's +Y.
+
+- Each `allowed` table gains an optional `neighbour_port`, defaulting to `opposite(port)`, and the key becomes **(port, neighbour port, twist)**. At most 6 × 6 × 4 = 144 tables; a one-layer shell uses at most 16 side types plus the two vertical ones. Every v1 file stays valid and solves identically.
+- Twist keeps its definition from spike 2, from world arrows: quarter turns counter-clockwise about A's outward port normal taking A's offset-0 arrow on `p` onto B's on `q`. It is the same measured from either side.
+- Symmetry invariant: `w ∈ T(p, q, t)[v]` exactly when `v ∈ T(q, p, t)[w]`. The reverse-edge check in `graph.rs` already compares ports and twist both ways.
+- Touches `assembly.rs`, `adjacency.rs`, `graph.rs` and `validate.rs`, the reference solver, `schema/compiled-assembly-v1.json` (to 1.1.0) and `.claude/rules/solver-core.md`. It needs Theo's sign-off, like every contract change.
+
+### Compiler: pairs for an edge type
+
+An edge type `(p, q, t)` corresponds one to one to a relative rotation `R` in the 24-rotation group. A pair `(v, w)` is allowed across it exactly when `(v, w′)` is allowed across `p` on a box grid, where `w′` is the variant of `w`'s module with rotation `R ∘ rotation(w)`. Connectors, explicit, disallowed and exclusive rules, Indifference and deduplication all carry over with no new rule semantics. When `w′` does not exist (a module with freedom None or X across a seam that turns it), the pair is dropped and the audit says where.
+
+So rotational freedom means something new on a surface. A slot's frame about the normal is arbitrary per face, so **Z freedom (turns about the normal) is the natural default for surface kits**. None means "follow the slot frame", which is useful on a grid-like patch and fragile across seams. A direction field (frames from a UV map or a world axis, for façade-like patterns that need an "up") is a later iteration.
+
+### Placing geometry
+
+- **Rigid:** instance at the slot centre, rotated by the slot frame composed with the variant rotation, scaled to the cell's mean size. Fast, and it leaves gaps on curved surfaces. Built first because it shows results early.
+- **Deform (trilinear):** a module vertex at unit-cell coordinates `(u, v, w)` moves to the trilinear blend of the slot's eight corners. Neighbours share the four corners of their common face, and trilinear interpolation on a face depends only on those four, so geometry that matches on the unit cell matches after deformation: **watertight by construction**. Geometry Nodes route: realise the rotated instances at the origin, store the local position, carry the eight corners from the assembly points, then Set Position. Fallback: a NumPy bake to real meshes.
+
+Attribute contract additions (written to the assembly): `wfc_c0`…`wfc_c7` (float vectors, cell corners), `wfc_frame` (quaternion), `wfc_layer` and `wfc_face` (int). `wfc_rotation` becomes frame ∘ variant. Read side (S6): face-domain `wfc_w:*`, `wfc_priority` and `wfc_fix` on the source mesh apply to every slot of that face, so where things go can be painted on the surface.
+
+### Iterations
+
+Each iteration ends with every suite green; from S4 on, each also ends with something to look at in Blender. One concept-heavy change at a time, as in phase 1.
+
+| # | Iteration | Delivers | Done when |
+| --- | --- | --- | --- |
+| S0 | Spikes 6 and 7 | **Spike 6:** trilinear deformation in Geometry Nodes, 10,000 tube instances on a subdivided sphere. **Spike 7:** edge types and seams on quad spheres (levels 1 to 4) and a freeform mesh: counts per type, combinatorial `R` against geometric frames | Spike 6: max gap between matching connector vertices under 1e-5 × cell size, evaluation under 1 s, or NumPy bake chosen. Spike 7: `R` agrees everywhere; decision on Z-default freedom recorded |
+| S1 | Core edge types | Schema 1.1 in `lamda-core` and `reference/`; v1 fixtures unchanged | All Rust and Python suites green; differential tests on random graphs whose slots get random frames (each slot re-framed by a random rotation, ports and twists relabelled); scrambled solutions map back to valid unscrambled ones |
+| S2 | Compiler edge types | `graph.py` builds edges from slots with frames; `rules.py` derives pairs per edge type through `R` | Tube-kit golden numbers hold on a scrambled tube envelope: 37 variants, initial domains 7/13/23, propagation 6/7/13/2 then 4/6 |
+| S3 | Shell model (no `bpy`) | `addon/model/shell.py`: quad mesh + thickness + layers → slots, corners, frames, edges, exposed ports; audit items for skipped faces and non-manifold edges | A flat quad grid compiles to the same assembly as the equivalent box envelope; a cube gives 6 slots and 24 directed side edges with the expected types; property tests on random quad meshes give symmetric graphs |
+| S4 | Blender, rigid | Envelope panel "Surface" mode (object, thickness, layers, offset); new attributes; rigid Materialise | `tests/blender/test_surface.py`: subdivided cube + tube kit, pinned attribute hash, both backends; first viewport look |
+| S5 | Blender, deform | "Deform to cells" in Materialise, from spike 6; `examples/surface-pipes.blend`; README figure | Pipes continuous on the quad sphere; test checks the gap bound on the realised mesh |
+| S6 | Thickness and control | Several layers; boundary policy per group (top, bottom, rim); face-domain weights, priority and fix; `wfc_thickness` | Two-layer shell test with a different connector closing top and bottom; painted-weight test |
+| S7 | Tutorial and gate | `docs/surface-tutorial.md` and its PDF | The gate below |
+
+**Gate:** working from `docs/surface-tutorial.md` alone, a newcomer wraps the pipes kit onto (a) a quad sphere and (b) a freeform Subdivision Surface mesh with two layers, in Blender 5.2. Both solve with a fixed seed, the deformed pipes are watertight at every connector, and the Blender tests pin both hashes.
+
+Rough effort: about 5 weeks. S1 is the only Rust in the phase; it extends existing files rather than adding a learning-path step, and still gets teaching comments and a journal entry.
+
+### Decisions for Theo before S1
+
+| Decision | Options | Recommendation |
+| --- | --- | --- |
+| Phase numbering | Surfaces as phase 2, parity 3, beyond 4 · keep parity as 2 | Surfaces as 2 (applied provisionally on 2026-11-10) |
+| Edge types | Schema 1.1 with (port, neighbour port, twist) · per-edge relative rotation index | (port, neighbour port, twist): reuses twist, keeps v1 valid |
+| Freedom on surfaces | Z default for surface kits · keep authored freedom and drop pairs across seams · direction field now | Keep authored freedom, warn when None/X/Y meets a seam, document Z as the surface default; direction field later |
+| Non-quad faces | Skip with audit warning · triangular-prism slots | Skip; prisms need their own ports and kits |
+| Deformation | Geometry Nodes · NumPy bake | Geometry Nodes if spike 6 passes, bake as fallback |
 
 ## Beyond parity
 
 Parity makes the tool credible; these features make it worth switching to, and the cell-complex track is the research-grade contribution.
 
-### Global constraints (phase 3)
+### Global constraints (phase 4)
 
 Local adjacency cannot express most architectural intent, so add constraints the solver checks during propagation:
 
@@ -577,6 +644,8 @@ The graph-based solver accepts any cell complex as an envelope, which Monoceros'
 - Slots come from a SpaceTope or Topologic CellComplex: cells become slots, shared faces become edges, and each edge stores the twist that aligns the two cells' local frames.
 - Hexahedral cells keep 6 ports and the same module library; module geometry is deformed into each cell by trilinear mapping of its 8 corners, as Townscaper does, implemented as a Geometry Nodes Set Position.
 - Other cell types (prisms, tetrahedra) need their own port sets and libraries, so scope them separately.
+
+Phase 2 ("Surfaces") builds the first of these: hexahedral shells grown from a quad mesh, with general edge types and trilinear deformation. SpaceTope and Topologic complexes reuse both.
 
 This is the part worth publishing: WFC over general cell complexes with frame-consistent connectors.
 
@@ -713,11 +782,11 @@ An independent validator checks every result, the Python and Rust solvers are te
 
 ## Roadmap
 
-Parity with Monoceros 3's core workflow lands after about 15 weeks of focused work, behind three gates; everything after that is optional and can run alongside research.
+Phase 1 passed its gate on 2026-11-10. Theo then put surfaces ahead of parity: phase 2 is "Surfaces" (below), parity became phase 3 and "Beyond parity" phase 4. Phase numbers in the tables of this plan follow the new numbering; the figure still shows the original four phases.
 
 ![Figure 8. Roadmap · 4 phases, 3 gates, a parallel research track](figures/roadmap.png)
 
-Each gate is a hard stop: if spikes fail, the architecture changes before any UI exists; if a newcomer cannot rebuild the pipes kit from the docs, phase 2 waits. Estimates assume one experienced developer and will move with the spike results.
+Each gate is a hard stop: if spikes fail, the architecture changes before any UI exists; if a newcomer cannot rebuild the pipes kit from the docs, the next phase waits. Estimates assume one experienced developer and will move with the spike results.
 
 ## Risks and spikes
 
@@ -730,7 +799,7 @@ Five two-to-three-day spikes in phase 0 retire the risks that could force a rede
 | Native wheel fails to load, or threading misbehaves, on one platform | No Rust speed on that platform | Spike 3: a minimal PyO3 abi3 wheel loaded in 5.2 on Windows, macOS and Linux, solving on a worker thread with cancel; Python reference as fallback |
 | Variant counts explode (24 rotations × parts × modules) | Memory and time blow up | Spike 4: benchmark bitset AC-3 at 400, 2,000 and 16,000 variants; deduplicate early; sparse domains behind a trait |
 | Attribute write-back is slow on large envelopes | Laggy UI after each solve | Spike 5: time `foreach_set` for 200,000 points × 8 attributes |
-| High contradiction rate on large or tight envelopes | Users see failures, not designs | Backtracking budget and audit in phase 2; solving in blocks in phase 3 |
+| High contradiction rate on large or tight envelopes | Users see failures, not designs | Backtracking budget (built in phase 1) and audit; solving in blocks in phase 4 |
 | Blender API changes after 5.2 | Breakage on new releases | Minimum 5.2 LTS; CI job on the daily build |
 | Extension platform rules | Rejected upload | Publish the core to PyPI first; GPL-3.0-or-later add-on; declare file permissions |
 | IP or naming conflict with Monoceros | Legal friction | Clean-room from public docs; own name and UI wording |

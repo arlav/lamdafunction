@@ -210,7 +210,7 @@ pub struct Settings {
     pub backtrack_budget: u32,
     /// Stop after this many observations and return a partial result; 0 = no limit.
     pub max_observations: u64,
-    /// `collapse` fills every slot; `grow` is phase 2 (growth mode).
+    /// `collapse` fills every slot; `grow` is phase 3 (growth mode).
     pub mode: Mode,
     /// Per module, how many instances may be placed; `None` means unlimited.
     #[serde(default)]
@@ -224,7 +224,7 @@ pub struct Settings {
 pub enum Mode {
     /// Fill every slot with one variant.
     Collapse,
-    /// Grow from placed modules, allowing "empty" (phase 2).
+    /// Grow from placed modules, allowing "empty" (phase 3).
     Grow,
 }
 
