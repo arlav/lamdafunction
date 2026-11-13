@@ -76,3 +76,30 @@ Compiler errors met
 
 Exercise
 - The Python reference (`reference/solver.py`) mirrors `solve.rs` function by function. Read `Solver::run_loop` in Rust next to `Solver._run_loop` in Python: every `let .. else`, `match` and `while let` has a Python twin. Then run `.venv/bin/python -m pytest tests/python/test_differential.py -q`: it solves 2,300 random assemblies in both and compares bit for bit. Change one `<` to `<=` in `_choose_variant` and watch which cases diverge first.
+
+---
+
+## 2026-11-13 · Phase 2, S1: edge types (port, neighbour port, twist), schema 1.1
+
+Files: `core/lamda-core/src/ids.rs`, `assembly.rs`, `adjacency.rs`, `graph.rs`, `propagate.rs`, `solve.rs`, `validate.rs`, `synthetic.rs`. Python twins in `reference/assembly.py`, `reference/solver.py`, `reference/validate.py`; new turned-frame cases in `tests/python/test_differential.py`.
+
+Why: on a surface shell each slot's frame turns from face to face, so slot A's +X can meet slot B's +Y. A table keyed by (port, twist) assumed the neighbour always shows the opposite port. Now every table is keyed by the edge's kind, `EdgeType { port, neighbour_port, twist }`, and a 1.0 file reads as before because a missing `neighbour_port` means "the opposite port".
+
+Concepts introduced
+- A struct with named fields used as a value and a key, and field init shorthand `EdgeType { port, .. }` (ids.rs:195, ids.rs:225). WHY a struct and not a tuple: both ports are `PortId`, so a tuple would let them be swapped silently.
+- `impl fmt::Display` with an elided lifetime `Formatter<'_>`, so errors print `port 0 to 2 twist 1` (ids.rs:272).
+- A fixed-size array constant `[&str; 2]` and `contains(&x.as_str())` (assembly.rs:49, assembly.rs:394).
+- serde field attributes `#[serde(default, skip_serializing_if = "Option::is_none")]`: a missing key reads as `None`, and `None` is left out when writing, so 1.0 files round-trip byte-shape unchanged (assembly.rs:173).
+- `match` on an `Option` to fill a default (assembly.rs:196); `if let Some(q)` for an optional range check.
+- A type alias, `type PairKey = (u8, u8, u8, u32, u32)` (validate.rs:37): a second name, not a new type.
+- `serde_json::Value` indexing in a test, `value["allowed"][0].get("neighbour_port")` (assembly.rs, test `box_grid_tables_write_no_neighbour_port`).
+
+Compiler errors met
+- `error[E0425]: cannot find function, tuple struct or tuple variant PortId in this scope` at solve.rs:804, in the tests. `use super::*` gives the test module everything the parent module imported. After `solve.rs` stopped importing `PortId` (edges are named by `EdgeType` now), the test that builds a `BoundaryPort { port: PortId(1), .. }` lost it. Fix: `use crate::ids::PortId;` in `mod tests` (solve.rs:766). Lesson: `super::*` imports the parent's *imports* too, so removing an unused-looking import can break the tests.
+
+Numbers
+- Spike 4 study (18,900 slots × 400 variants), old and new cores alternated on the same file: 0.65 to 0.86 s per attempt for both, so the wider key costs nothing measurable. (This machine ran slower than on 2026-10-16, when spike 4 measured about 0.4 s.)
+- Differential: 1,700 new turned cases, 84 % of edges joining non-opposite ports, 75 % with a nonzero twist, 4,370 edges whose two ports are equal (a table that is its own reverse). Rust and Python identical on all.
+
+Exercise
+- In `ids.rs`, add `pub fn is_box_grid(self) -> bool` to `EdgeType`: true when `neighbour_port == port.opposite()`, with a doc test showing one true and one false case. Then use it in `adjacency.rs`'s doc comment example for `table`. `cargo test -p lamda-core ids` and `python scripts/check_teaching.py` must pass.

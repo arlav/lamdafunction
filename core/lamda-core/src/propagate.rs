@@ -29,7 +29,7 @@ use thiserror::Error;
 use crate::adjacency::Adjacency;
 use crate::bitset::Bitset;
 use crate::graph::Graph;
-use crate::ids::{PortId, SlotId, Twist};
+use crate::ids::{EdgeType, SlotId};
 use crate::progress::Progress;
 
 /// How often, in queue pops, the cancel flag is checked.
@@ -47,14 +47,12 @@ pub enum PropagateError {
     /// The host raised the cancel flag.
     #[error("cancelled")]
     Cancelled,
-    /// The graph has an edge whose (port, twist) has no adjacency table; a
-    /// compiler bug, caught here rather than treated as "anything goes".
-    #[error("no adjacency table for port {port} twist {twist}")]
+    /// The graph has an edge whose kind has no adjacency table; a compiler
+    /// bug, caught here rather than treated as "anything goes".
+    #[error("no adjacency table for {edge}")]
     MissingTable {
-        /// The port.
-        port: PortId,
-        /// The twist.
-        twist: Twist,
+        /// The edge kind without a table.
+        edge: EdgeType,
     },
 }
 
@@ -267,12 +265,12 @@ impl Propagator {
             for edge in graph.edges(slot) {
                 // RUST: `graph.edges(slot)` borrows `graph` immutably; `domains` is a
                 // separate borrow, so both can be live at once.
+                let kind = edge.edge_type();
+                // WFC: the edge's kind (port, neighbour port, twist) picks the table;
+                // on a surface shell +X may meet +Y, so the neighbour port counts.
                 let support = adjacency
-                    .support(edge.port, edge.twist, &domains[slot.index()])
-                    .ok_or(PropagateError::MissingTable {
-                        port: edge.port,
-                        twist: edge.twist,
-                    })?;
+                    .support(kind, &domains[slot.index()])
+                    .ok_or(PropagateError::MissingTable { edge: kind })?;
                 // RUST: `ok_or` turns `Option` into `Result`, then `?` returns the
                 // error if there was no table.
                 let neighbour = edge.neighbour;

@@ -3,8 +3,9 @@
 
 Reading guide, with the Rust twin of each piece:
 
-- :class:`Tables` (``adjacency.rs``): one row per variant per (port, twist),
-  each row an int bitset of the variants allowed across that port.
+- :class:`Tables` (``adjacency.rs``): one row per variant per edge kind
+  (port, neighbour port, twist), each row an int bitset of the variants
+  allowed across that edge.
 - :class:`Graph` (``graph.rs``): the CSR edges, checked for self loops,
   duplicate ports and missing or mismatched reverse edges.
 - :class:`Weights` and :class:`EntropySums` (``entropy.rs``): effective
@@ -53,57 +54,62 @@ def single(bits: int) -> int | None:
     return None
 
 
-def table_key(port: int, twist: int) -> int:
-    """Index of the (port, twist) table, ``port * 4 + twist`` like ``ids::table_key``."""
-    return port * 4 + twist
+EdgeType = tuple[int, int, int]
+"""``(port, neighbour port, twist)``: the kind of an edge, like ``ids::EdgeType``."""
 
 
-def opposite(port: int) -> int:
-    """The port across the edge on a box slot: ``port ^ 1``."""
-    return port ^ 1
+def reverse(edge: EdgeType) -> EdgeType:
+    """The same edge seen from the neighbour: ports swap, the twist stays."""
+    port, neighbour_port, twist = edge
+    return (neighbour_port, port, twist)
 
 
 class Tables:
-    """Adjacency bitsets per (port, twist), built from ``allowed`` and checked for symmetry."""
+    """Adjacency bitsets per edge kind, built from ``allowed`` and checked for symmetry."""
 
     def __init__(self, assembly: Assembly) -> None:
         self.variant_count = assembly.variant_count
-        self.rows: dict[int, list[int]] = {}
+        self.rows: dict[EdgeType, list[int]] = {}
         for table in assembly.allowed:
-            key = table_key(table.port, table.twist)
-            if key in self.rows:
-                raise ValueError(f"duplicate allowed table for port {table.port} twist {table.twist}")
+            edge = table.edge_type()
+            if edge in self.rows:
+                raise ValueError(f"duplicate allowed table for {_name(edge)}")
             rows = [0] * self.variant_count
             for v, w in table.pairs:
                 rows[v] |= 1 << w
-            self.rows[key] = rows
+            self.rows[edge] = rows
         self._check_symmetry()
 
     def _check_symmetry(self) -> None:
-        """``w in table(p, t)[v]`` exactly when ``v in table(opposite(p), t)[w]``."""
-        for key, rows in self.rows.items():
-            port, twist = divmod(key, 4)
-            mirror = self.rows.get(table_key(opposite(port), twist))
+        """``w in table(e)[v]`` exactly when ``v in table(reverse(e))[w]``, in key order like Rust."""
+        for edge in sorted(self.rows):
+            rows = self.rows[edge]
+            mirror = self.rows.get(reverse(edge))
             if mirror is None:
-                raise ValueError(f"table for port {port} twist {twist} has no opposite table")
+                raise ValueError(f"table for {_name(edge)} has no table for the reverse edge")
             for v, row in enumerate(rows):
                 for w in ones(row):
                     if not (mirror[w] >> v) & 1:
                         raise ValueError(
-                            f"asymmetric tables: {w} allowed across port {port} twist {twist} from {v}, but not the reverse"
+                            f"asymmetric tables: {w} allowed across {_name(edge)} from {v}, but not the reverse"
                         )
 
-    def support(self, port: int, twist: int, domain: int) -> int:
-        """OR of the rows of every variant in ``domain``: what the neighbour across ``port`` may hold."""
-        rows = self.rows[table_key(port, twist)]
+    def support(self, edge: EdgeType, domain: int) -> int:
+        """OR of the rows of every variant in ``domain``: what the neighbour across ``edge`` may hold."""
+        rows = self.rows[edge]
         support = 0
         for v in ones(domain):
             support |= rows[v]
         return support
 
-    def has(self, port: int, twist: int) -> bool:
-        """Whether a table exists for (port, twist)."""
-        return table_key(port, twist) in self.rows
+    def has(self, edge: EdgeType) -> bool:
+        """Whether a table exists for this edge kind."""
+        return edge in self.rows
+
+
+def _name(edge: EdgeType) -> str:
+    """``port 0 to 2 twist 1``, as ``EdgeType``'s ``Display`` writes it."""
+    return f"port {edge[0]} to {edge[1]} twist {edge[2]}"
 
 
 @dataclass(frozen=True)
@@ -248,7 +254,7 @@ class Propagator:
             slot = self.queue.popleft()
             self.in_queue[slot] = False
             for edge in graph.edges[slot]:
-                support = tables.support(edge.port, edge.twist, domains[slot])
+                support = tables.support((edge.port, edge.neighbour_port, edge.twist), domains[slot])
                 neighbour = edge.neighbour
                 current = domains[neighbour]
                 if current & ~support == 0:
@@ -363,8 +369,8 @@ class Solver:
         self.priority = list(assembly.priority) if assembly.priority is not None else [0] * assembly.slots
         for slot, edges in enumerate(self.graph.edges):
             for edge in edges:
-                if not self.tables.has(edge.port, edge.twist):
-                    raise ValueError(f"no adjacency table for port {edge.port} twist {edge.twist}, used by slot {slot}")
+                if not self.tables.has((edge.port, edge.neighbour_port, edge.twist)):
+                    raise ValueError(f"no adjacency table for {_name((edge.port, edge.neighbour_port, edge.twist))}, used by slot {slot}")
         self.canonical = self._initial_domains()
         self.report = CanonicalReport()
         propagator = Propagator(assembly.slots)

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""Load a compiled assembly (schema v1) and check it, mirroring ``assembly.rs``.
+"""Load a compiled assembly (schema 1.0 or 1.1) and check it, mirroring ``assembly.rs``.
 
 The field list is the table in ``.claude/rules/solver-core.md``, "Compiled
 assembly, schema v1". Every check here has a twin in ``Assembly::check`` in
@@ -15,7 +15,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
+"""The version this package writes; 1.1.0 adds ``neighbour_port`` to ``allowed`` tables."""
+
+READ_VERSIONS = ("1.0.0", "1.1.0")
+"""Every version this package reads, like ``READ_VERSIONS`` in ``assembly.rs``."""
 
 
 @dataclass(frozen=True)
@@ -40,11 +44,21 @@ class Variant:
 
 @dataclass(frozen=True)
 class AllowedTable:
-    """Allowed ``(v, w)`` pairs across ``port`` at ``twist``: ``w`` may sit across that port from ``v``."""
+    """Allowed ``(v, w)`` pairs for one edge kind: ``w`` may sit across ``port`` from ``v``.
+
+    ``neighbour_port`` is the neighbour's touching port; ``None`` (absent in the
+    JSON, as in every 1.0 file) means the opposite box port, ``port ^ 1``.
+    """
 
     port: int
     twist: int
     pairs: tuple[tuple[int, int], ...]
+    neighbour_port: int | None = None
+
+    def edge_type(self) -> tuple[int, int, int]:
+        """``(port, neighbour port, twist)`` with the 1.0 default filled in, like ``AllowedTable::edge_type``."""
+        neighbour_port = self.port ^ 1 if self.neighbour_port is None else self.neighbour_port
+        return (self.port, neighbour_port, self.twist)
 
 
 @dataclass(frozen=True)
@@ -161,7 +175,12 @@ def _from_doc(doc: dict[str, Any]) -> Assembly:
         ),
         ports=int(doc["ports"]),
         allowed=tuple(
-            AllowedTable(int(t["port"]), int(t["twist"]), tuple((int(v), int(w)) for v, w in t["pairs"]))
+            AllowedTable(
+                int(t["port"]),
+                int(t["twist"]),
+                tuple((int(v), int(w)) for v, w in t["pairs"]),
+                None if t.get("neighbour_port") is None else int(t["neighbour_port"]),
+            )
             for t in doc["allowed"]
         ),
         slots=int(doc["slots"]),
@@ -227,8 +246,8 @@ def _sorted_strict(values: tuple[int, ...]) -> bool:
 
 def _check(a: Assembly) -> None:
     """All of ``Assembly::check`` from Rust, in the same order."""
-    if a.schema_version != SCHEMA_VERSION:
-        raise ValueError(f"unsupported schema version {a.schema_version}, expected {SCHEMA_VERSION}")
+    if a.schema_version not in READ_VERSIONS:
+        raise ValueError(f"unsupported schema version {a.schema_version}, expected 1.0.0 or 1.1.0")
     modules = len(a.modules)
     variants = len(a.variants)
     for v in a.variants:
@@ -240,6 +259,8 @@ def _check(a: Assembly) -> None:
         _length("settings.supply_caps", len(a.settings.supply_caps), modules)
     for table in a.allowed:
         _index("allowed.port", table.port, a.ports)
+        if table.neighbour_port is not None:
+            _index("allowed.neighbour_port", table.neighbour_port, a.ports)
         _twist("allowed.twist", table.twist)
         for v, w in table.pairs:
             _index("allowed.pairs", v, variants)

@@ -90,6 +90,8 @@ pub fn generate(spec: &BenchSpec) -> Assembly {
     }
     let allowed = (0..6u8)
         .map(|port| AllowedTable {
+            neighbour_port: None,
+            // WHY: benchmark kits are box grids, so every table is the 1.0 kind.
             port: PortId(port),
             twist: Twist(0),
             pairs: pairs[port as usize]

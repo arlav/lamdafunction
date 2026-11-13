@@ -37,7 +37,7 @@ use crate::assembly::{Assembly, LoadError};
 use crate::bitset::Bitset;
 use crate::entropy::{EntropySums, Weights};
 use crate::graph::{Graph, GraphError};
-use crate::ids::{PortId, SlotId, Twist, VariantId};
+use crate::ids::{EdgeType, SlotId, VariantId};
 use crate::observe::{Agenda, choose_variant};
 use crate::progress::Progress;
 use crate::propagate::{PropagateError, Propagator};
@@ -102,15 +102,13 @@ pub enum SolveError {
     /// The adjacency tables are malformed.
     #[error(transparent)]
     Adjacency(#[from] AdjacencyError),
-    /// An edge uses a (port, twist) with no table.
-    #[error("no adjacency table for port {port} twist {twist}, used by slot {slot}")]
+    /// An edge uses a kind (port, neighbour port, twist) with no table.
+    #[error("no adjacency table for {edge}, used by slot {slot}")]
     MissingTable {
         /// The slot owning the edge.
         slot: SlotId,
-        /// The port.
-        port: PortId,
-        /// The twist.
-        twist: Twist,
+        /// The edge kind without a table.
+        edge: EdgeType,
     },
     /// The rayon thread pool for parallel attempts could not be built.
     #[error("cannot build thread pool: {0}")]
@@ -299,11 +297,10 @@ impl<'a> Solver<'a> {
             Err(PropagateError::Contradiction { slot }) => {
                 report.contradiction = Some(slot);
             }
-            Err(PropagateError::MissingTable { port, twist }) => {
+            Err(PropagateError::MissingTable { edge }) => {
                 return Err(SolveError::MissingTable {
                     slot: SlotId(0),
-                    port,
-                    twist,
+                    edge,
                 });
             }
             Err(PropagateError::Cancelled) => {}
@@ -528,8 +525,8 @@ impl<'a> Solver<'a> {
             match result {
                 Ok(()) => {}
                 Err(PropagateError::Cancelled) => return Ok(Outcome::Cancelled),
-                Err(PropagateError::MissingTable { port, twist }) => {
-                    return Err(SolveError::MissingTable { slot, port, twist });
+                Err(PropagateError::MissingTable { edge }) => {
+                    return Err(SolveError::MissingTable { slot, edge });
                 }
                 Err(PropagateError::Contradiction { .. }) => {} // RUST: `match` must be exhaustive; the loop above guarantees this
                                                                 // arm is never taken, but the compiler cannot know that.
@@ -660,18 +657,17 @@ impl<'a> Solver<'a> {
     }
 }
 
-/// Every edge's (port, twist) must have a table.
+/// Every edge's kind (port, neighbour port, twist) must have a table.
 ///
 /// Cost: O(edges).
 fn check_tables(graph: &Graph, adjacency: &Adjacency) -> Result<(), SolveError> {
     for index in 0..graph.slot_count() {
         let slot = SlotId(index as u32);
         for edge in graph.edges(slot) {
-            if adjacency.table(edge.port, edge.twist).is_none() {
+            if adjacency.table(edge.edge_type()).is_none() {
                 return Err(SolveError::MissingTable {
                     slot,
-                    port: edge.port,
-                    twist: edge.twist,
+                    edge: edge.edge_type(),
                 });
             }
         }
@@ -767,6 +763,10 @@ pub fn all_collapsed<D: Domain>(domains: &[D]) -> bool {
 mod tests {
     use super::*;
     use crate::assembly::examples;
+    use crate::ids::PortId;
+    // RUST: `use super::*` brings in everything the parent module imported. The
+    // parent no longer uses `PortId` (edges are named by `EdgeType` now), so the
+    // tests import it themselves; without this line rustc reports E0425.
 
     /// A fixed variant that contradicts the rules must surface as a
     /// canonicalisation error, not as a failed attempt.

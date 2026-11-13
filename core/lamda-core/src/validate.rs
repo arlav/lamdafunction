@@ -29,12 +29,19 @@ use crate::assembly::Assembly;
 use crate::ids::{PortId, SlotId, Twist, VariantId};
 use crate::solve::{SolveResult, state};
 
+/// One allowed pair as the validator stores it: (port, neighbour port, twist,
+/// v, w), plain integers.
+///
+/// RUST: `type` makes an alias, a second name for an existing type; it is not a
+/// new type, so a plain tuple can be used wherever a `PairKey` is expected.
+type PairKey = (u8, u8, u8, u32, u32);
+
 /// One way a result breaks the rules.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum Violation {
     /// Two neighbouring choices are not an allowed pair.
     #[error(
-        "slot {slot} ({variant}) and slot {neighbour} ({neighbour_variant}) are not allowed across port {port} twist {twist}"
+        "slot {slot} ({variant}) and slot {neighbour} ({neighbour_variant}) are not allowed across port {port} to {neighbour_port} twist {twist}"
     )]
     Pair {
         /// The slot.
@@ -43,6 +50,8 @@ pub enum Violation {
         variant: VariantId,
         /// Its port on the edge.
         port: PortId,
+        /// The neighbour's port on the edge.
+        neighbour_port: PortId,
         /// The edge's twist.
         twist: Twist,
         /// The neighbour.
@@ -129,12 +138,20 @@ pub fn validate(assembly: &Assembly, result: &SolveResult) -> Result<(), Vec<Vio
             expected: slots,
         }]);
     }
-    // RUST: `HashSet<(u8, u8, u32, u32)>`: a set of tuples keyed by
-    // (port, twist, v, w). Tuples of hashable types are hashable.
-    let mut allowed: HashSet<(u8, u8, u32, u32)> = HashSet::new();
+    // RUST: `HashSet<(u8, u8, u8, u32, u32)>`: a set of tuples keyed by
+    // (port, neighbour port, twist, v, w). Tuples of hashable types are hashable.
+    let mut allowed: HashSet<PairKey> = HashSet::new();
     for table in &assembly.allowed {
+        // WHY not `table.edge_type()`: the validator reads the file's own fields so
+        // it shares no logic with the code it checks. A missing neighbour port means
+        // the opposite box face, which on box ports is the port with its lowest bit
+        // flipped (+X 0 and -X 1, and so on).
+        let neighbour_port = match table.neighbour_port {
+            Some(port) => port.0,
+            None => table.port.0 ^ 1,
+        };
         for (v, w) in &table.pairs {
-            allowed.insert((table.port.0, table.twist.0, v.0, w.0));
+            allowed.insert((table.port.0, neighbour_port, table.twist.0, v.0, w.0));
         }
     }
     // RUST: a closure that reads the result; returns `Option<VariantId>`.
@@ -187,7 +204,7 @@ fn check_domain(assembly: &Assembly, slot: SlotId, variant: VariantId, out: &mut
 /// Every solved neighbour must form an allowed pair across the edge.
 fn check_edges(
     assembly: &Assembly,
-    allowed: &HashSet<(u8, u8, u32, u32)>,
+    allowed: &HashSet<PairKey>,
     slot: SlotId,
     variant: VariantId,
     chosen: &dyn Fn(SlotId) -> Option<VariantId>,
@@ -205,15 +222,19 @@ fn check_edges(
         };
         let key = (
             csr.port[e].0,
+            csr.neighbour_port[e].0,
             csr.twist[e].0,
             variant.0,
             neighbour_variant.0,
         );
+        // WFC: the edge's kind includes the neighbour's port, so a pair allowed on
+        // a box grid (+X meets -X) does not count where +X meets +Y.
         if !allowed.contains(&key) {
             out.push(Violation::Pair {
                 slot,
                 variant,
                 port: csr.port[e],
+                neighbour_port: csr.neighbour_port[e],
                 twist: csr.twist[e],
                 neighbour,
                 neighbour_variant,
@@ -313,6 +334,22 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// On turned frames the pair is looked up under (+X to +Y), not (+X to -X):
+    /// a solved turned assembly validates, and swapping its variants is caught.
+    #[test]
+    fn turned_edges_use_the_neighbour_port() {
+        let assembly =
+            Assembly::from_json(&crate::assembly::examples::turned_slots_json()).unwrap();
+        let solver = crate::solve::Solver::new(&assembly).unwrap();
+        let mut result = solver
+            .run_attempt(0, &crate::progress::Progress::new())
+            .unwrap();
+        assert!(validate(&assembly, &result).is_ok());
+        assert_eq!(result.variant, vec![0, 1]);
+        result.variant.swap(0, 1);
+        assert!(validate(&assembly, &result).is_err());
     }
 
     /// A variant outside the slot's class is caught even if the pair is allowed.

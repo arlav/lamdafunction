@@ -33,13 +33,25 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
 
-use crate::ids::{PortId, SlotId, Twist, VariantId};
+use crate::ids::{EdgeType, PortId, SlotId, Twist, VariantId};
 // RUST: `crate::` is the root of this library, so this imports from `ids.rs`.
 
-/// The only schema version this crate reads.
-pub const SCHEMA_VERSION: &str = "1.0.0";
+/// The schema version this crate writes (benchmark kits from `synthetic.rs`).
+///
+/// 1.1.0 adds an optional `neighbour_port` to each `allowed` table, so a table
+/// can describe an edge where `+X` meets `+Y` (surface shells, phase 2).
+pub const SCHEMA_VERSION: &str = "1.1.0";
 // RUST: `&str` is a borrowed string slice; a `&'static str` literal lives in
 // the binary for the whole program, so it can be a constant.
+
+/// Every schema version this crate reads. A 1.0.0 file is a 1.1.0 file in
+/// which no table names its `neighbour_port`.
+pub const READ_VERSIONS: [&str; 2] = ["1.0.0", "1.1.0"];
+// RUST: `[&str; 2]` is a fixed-size array: its length is part of the type and
+// known at compile time, so it can live in a constant. A `Vec` could not.
+
+/// [`READ_VERSIONS`] as text, for the error message.
+const READ_VERSIONS_TEXT: &str = "1.0.0 or 1.1.0";
 
 /// Everything that can go wrong while reading a compiled assembly.
 ///
@@ -57,11 +69,11 @@ pub enum LoadError {
     // is what lets `?` turn a failed `read_to_string` into `LoadError::Io`.
     // `{0}` refers to the first (unnamed) field of this tuple variant.
     /// The text is not valid JSON, or does not match the schema's shape.
-    #[error("compiled assembly is not valid JSON for schema {SCHEMA_VERSION}: {0}")]
+    #[error("compiled assembly is not valid JSON for schema {READ_VERSIONS_TEXT}: {0}")]
     Json(#[from] serde_json::Error),
 
     /// The file declares a schema version this crate does not read.
-    #[error("unsupported schema version {found}, expected {SCHEMA_VERSION}")]
+    #[error("unsupported schema version {found}, expected {READ_VERSIONS_TEXT}")]
     SchemaVersion {
         /// The version string found in the file.
         found: String,
@@ -147,17 +159,52 @@ pub struct Variant {
     pub internal: Vec<(PortId, u32)>,
 }
 
-/// The allowed pairs for one (port, twist): `w` may sit across `port` from `v`
-/// when the edge's twist is `twist`.
+/// The allowed pairs for one edge kind: `w` may sit across `port` from `v` when
+/// the neighbour's touching port is `neighbour_port` and the twist is `twist`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AllowedTable {
     /// Port on the slot being looked at.
     pub port: PortId,
+    /// Port on the neighbour; `None` (absent in the JSON) means the opposite
+    /// port, as on a box grid and in every schema 1.0 file.
+    ///
+    /// WHY `Option` and not a plain `PortId` filled in on load: the file keeps
+    /// its own shape when written back, and a 1.0 file round-trips unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // RUST: `default` makes a missing key `None`; `skip_serializing_if` leaves
+    // the key out when writing a `None`, instead of writing `null`.
+    pub neighbour_port: Option<PortId>,
     /// Twist of the edge.
     pub twist: Twist,
     /// Allowed `[v, w]` pairs, any order, duplicates tolerated.
     pub pairs: Vec<(VariantId, VariantId)>,
     // RUST: serde reads a JSON two-element array as a tuple `(a, b)`.
+}
+
+impl AllowedTable {
+    /// The edge kind this table is for, with the 1.0 default filled in.
+    ///
+    /// Cost: O(1).
+    ///
+    /// # Examples
+    /// ```
+    /// use lamda_core::assembly::AllowedTable;
+    /// use lamda_core::ids::{PortId, Twist};
+    /// let table = AllowedTable { port: PortId(0), neighbour_port: None, twist: Twist(0), pairs: vec![] };
+    /// assert_eq!(table.edge_type().neighbour_port, PortId(1)); // +X meets -X
+    /// ```
+    pub fn edge_type(&self) -> EdgeType {
+        // RUST: `match` on the Option: `Some(q)` binds the port inside it.
+        // PY: `EdgeType(self.port, q if q is not None else opposite(self.port), self.twist)`
+        match self.neighbour_port {
+            Some(neighbour_port) => EdgeType {
+                port: self.port,
+                neighbour_port,
+                twist: self.twist,
+            },
+            None => EdgeType::box_grid(self.port, self.twist),
+        }
+    }
 }
 
 /// The slot graph in compressed sparse row (CSR) form: the edges of slot `s` are
@@ -235,7 +282,7 @@ pub enum Mode {
 /// in `0..=3`. Later stages rely on this and index without further checks.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Assembly {
-    /// Must equal [`SCHEMA_VERSION`].
+    /// One of [`READ_VERSIONS`].
     pub schema_version: String,
     /// Hash of the compiler's inputs, for caching and reports; not interpreted.
     pub compile_hash: String,
@@ -342,7 +389,9 @@ impl Assembly {
     /// ```
     pub fn check(&self) -> Result<(), LoadError> {
         // RUST: `Result<(), E>`: success carries no value, only "it was fine".
-        if self.schema_version != SCHEMA_VERSION {
+        // RUST: `contains` on an array takes a reference to the item; `as_str()`
+        // borrows the String as a `&str`, which is the array's item type.
+        if !READ_VERSIONS.contains(&self.schema_version.as_str()) {
             return Err(LoadError::SchemaVersion {
                 found: self.schema_version.clone(),
                 // RUST: `.clone()` copies the String because the error must own
@@ -382,6 +431,14 @@ impl Assembly {
         let variants = self.variants.len();
         for table in &self.allowed {
             check_index("allowed.port", table.port.index(), self.ports as usize)?;
+            // RUST: `if let Some(q) = ...` runs the block only when the Option holds a value.
+            if let Some(neighbour_port) = table.neighbour_port {
+                check_index(
+                    "allowed.neighbour_port",
+                    neighbour_port.index(),
+                    self.ports as usize,
+                )?;
+            }
             check_twist("allowed.twist", table.twist)?;
             for (v, w) in &table.pairs {
                 check_index("allowed.pairs", v.index(), variants)?;
@@ -625,6 +682,52 @@ pub mod examples {
         }"#
         .to_string()
     }
+
+    /// Schema 1.1: two slots whose frames are turned against each other, as on
+    /// a surface shell. Slot 0's `+X` (port 0) meets slot 1's `+Y` (port 2);
+    /// the only rule is "a on port 0 meets b on port 2". So the one solution is
+    /// slot 0 = a, slot 1 = b.
+    ///
+    /// Cost: builds a short string.
+    ///
+    /// # Examples
+    /// ```
+    /// let text = lamda_core::assembly::examples::turned_slots_json();
+    /// assert!(text.contains("\"neighbour_port\": 2"));
+    /// ```
+    pub fn turned_slots_json() -> String {
+        // RUST: another raw string, as in `two_slots_json` above.
+        r#"{
+          "schema_version": "1.1.0",
+          "compile_hash": "example",
+          "modules": [{"name": "a", "library_index": 0}, {"name": "b", "library_index": 1}],
+          "variants": [
+            {"module": 0, "rotation": 0, "part": 0, "anchor": true},
+            {"module": 1, "rotation": 0, "part": 0, "anchor": true}
+          ],
+          "ports": 6,
+          "allowed": [
+            {"port": 0, "neighbour_port": 2, "twist": 0, "pairs": [[0, 1]]},
+            {"port": 2, "neighbour_port": 0, "twist": 0, "pairs": [[1, 0]]}
+          ],
+          "slots": 2,
+          "edges": {
+            "offsets": [0, 1, 2],
+            "port": [0, 2],
+            "neighbour": [1, 0],
+            "neighbour_port": [2, 0],
+            "twist": [0, 0]
+          },
+          "domain_classes": [[0, 1]],
+          "slot_domain": [0, 0],
+          "variant_weight": [1.0, 1.0],
+          "settings": {
+            "seed": 1, "attempts": 1, "threads": 1, "backtrack_budget": 0,
+            "max_observations": 0, "mode": "collapse"
+          }
+        }"#
+        .to_string()
+    }
 }
 
 #[cfg(test)]
@@ -691,6 +794,48 @@ mod tests {
             bad.check(),
             Err(LoadError::Index { field: "fixed", .. })
         ));
+    }
+
+    /// A 1.1 table names its neighbour's port; a 1.0 table falls back to the
+    /// opposite port. Both readings must give the edge kind the graph uses, or
+    /// the solver would look up a table that does not exist.
+    #[test]
+    fn edge_types_from_both_schema_versions() {
+        let turned = Assembly::from_json(&examples::turned_slots_json()).unwrap();
+        let kind = turned.allowed[0].edge_type();
+        assert_eq!((kind.port, kind.neighbour_port), (PortId(0), PortId(2)));
+        let grid = Assembly::from_json(&examples::two_slots_json()).unwrap();
+        assert_eq!(grid.allowed[0].neighbour_port, None);
+        assert_eq!(grid.allowed[0].edge_type().neighbour_port, PortId(1));
+    }
+
+    /// A `neighbour_port` outside the slot's ports is a range error, like any
+    /// other port index.
+    #[test]
+    fn neighbour_port_is_range_checked() {
+        let mut bad = Assembly::from_json(&examples::turned_slots_json()).unwrap();
+        bad.allowed[0].neighbour_port = Some(PortId(6));
+        assert!(matches!(
+            bad.check(),
+            Err(LoadError::Index {
+                field: "allowed.neighbour_port",
+                ..
+            })
+        ));
+    }
+
+    /// Writing a 1.0 file back must not add a `neighbour_port` key: older
+    /// readers (and the golden fixtures) see the same JSON shape as before.
+    #[test]
+    fn box_grid_tables_write_no_neighbour_port() {
+        let grid = Assembly::from_json(&examples::two_slots_json()).unwrap();
+        let value = serde_json::to_value(&grid).unwrap();
+        // RUST: `serde_json::Value` is untyped JSON; `["allowed"][0]` indexes it
+        // like a Python dict and list, giving `Value::Null` if absent.
+        assert!(value["allowed"][0].get("neighbour_port").is_none());
+        let turned = Assembly::from_json(&examples::turned_slots_json()).unwrap();
+        let back = Assembly::from_json(&serde_json::to_string(&turned).unwrap()).unwrap();
+        assert_eq!(back, turned);
     }
 
     /// Malformed JSON surfaces as `LoadError::Json` through the `From` impl.

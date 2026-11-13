@@ -27,10 +27,13 @@ def validate(assembly: Assembly, variant: Sequence[int], state: Sequence[int]) -
     if len(variant) != slots or len(state) != slots:
         return [f"result has {len(variant)} entries, assembly has {slots} slots"]
 
-    allowed: set[tuple[int, int, int, int]] = set()
+    # (port, neighbour port, twist, v, w). Read from the file's own fields, not
+    # AllowedTable.edge_type, so the validator shares no code with the solver path.
+    allowed: set[tuple[int, int, int, int, int]] = set()
     for table in assembly.allowed:
+        neighbour_port = table.port ^ 1 if table.neighbour_port is None else table.neighbour_port
         for v, w in table.pairs:
-            allowed.add((table.port, table.twist, v, w))
+            allowed.add((table.port, neighbour_port, table.twist, v, w))
 
     def chosen(slot: int) -> int | None:
         if state[slot] == STATE_SOLVED and variant[slot] >= 0:
@@ -52,9 +55,10 @@ def validate(assembly: Assembly, variant: Sequence[int], state: Sequence[int]) -
             w = chosen(e.neighbour[i])
             if w is None:
                 continue
-            if (e.port[i], e.twist[i], v, w) not in allowed:
+            if (e.port[i], e.neighbour_port[i], e.twist[i], v, w) not in allowed:
                 out.append(
-                    f"slot {slot} ({v}) and slot {e.neighbour[i]} ({w}) are not allowed across port {e.port[i]} twist {e.twist[i]}"
+                    f"slot {slot} ({v}) and slot {e.neighbour[i]} ({w}) are not allowed across port {e.port[i]}"
+                    f" to {e.neighbour_port[i]} twist {e.twist[i]}"
                 )
         this = assembly.variants[v]
         for port, part in this.internal:

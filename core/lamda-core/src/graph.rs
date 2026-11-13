@@ -22,7 +22,7 @@
 use thiserror::Error;
 
 use crate::assembly::Assembly;
-use crate::ids::{PortId, SlotId, Twist};
+use crate::ids::{EdgeType, PortId, SlotId, Twist};
 
 /// One directed edge, stored on the slot it leaves.
 ///
@@ -39,6 +39,32 @@ pub struct Edge {
     pub neighbour_port: PortId,
     /// Quarter turns between the two face frames (0 on box grids).
     pub twist: Twist,
+}
+
+impl Edge {
+    /// This edge's kind, which picks its adjacency table.
+    ///
+    /// Cost: O(1).
+    ///
+    /// # Examples
+    /// ```
+    /// use lamda_core::assembly::{Assembly, examples};
+    /// use lamda_core::graph::Graph;
+    /// use lamda_core::ids::{PortId, SlotId};
+    /// let assembly = Assembly::from_json(&examples::turned_slots_json()).unwrap();
+    /// let graph = Graph::from_assembly(&assembly).unwrap();
+    /// let kind = graph.edges(SlotId(0))[0].edge_type();
+    /// assert_eq!((kind.port, kind.neighbour_port), (PortId(0), PortId(2)));
+    /// ```
+    pub fn edge_type(&self) -> EdgeType {
+        // RUST: `&self` borrows the edge; the fields are `Copy`, so they are
+        // copied into the new EdgeType and the edge is untouched.
+        EdgeType {
+            port: self.port,
+            neighbour_port: self.neighbour_port,
+            twist: self.twist,
+        }
+    }
 }
 
 /// Structural problems the assembly's range checks cannot see.

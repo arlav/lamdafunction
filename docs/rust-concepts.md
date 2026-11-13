@@ -64,3 +64,9 @@ One row per Rust concept used in this codebase, pointing to the first place its 
 | PyO3 module, class, function | `lamda-py/src/lib.rs` | pyo3.rs | `frozen` classes, `#[getter]`, `signature` |
 | Releasing the GIL | `lamda-py/src/lib.rs` (`solve_json`) | pyo3.rs/parallelism | `allow_threads` with a `Send` closure |
 | Workspace manifests | `Cargo.toml` | ch. 14.3 | `key.workspace = true` |
+| Named-field struct as a key, field init shorthand | `ids.rs` (`EdgeType`) | ch. 5.1 | WHY not a tuple: two `PortId` fields could be swapped |
+| `impl Display`, `Formatter<'_>` | `ids.rs` (`Display for EdgeType`) | ch. 10.3, RBE "Display" | Elided lifetime on the formatter |
+| Fixed-size array constants | `assembly.rs` (`READ_VERSIONS`) | ch. 3.2 | Length is part of the type |
+| serde `default`, `skip_serializing_if` | `assembly.rs` (`AllowedTable::neighbour_port`) | serde.rs/field-attrs | Optional field that round-trips 1.0 files unchanged |
+| Type aliases | `validate.rs` (`PairKey`) | ch. 20.3 | A second name, not a new type |
+

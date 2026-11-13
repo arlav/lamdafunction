@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Index newtypes: `SlotId`, `VariantId`, `PortId`, `Twist`.
+//! Index newtypes `SlotId`, `VariantId`, `PortId`, `Twist`, and `EdgeType`.
 //!
 //! Where it sits: every other file uses these to say which slot, variant, port
 //! or twist it means. The compiled assembly stores plain integers; `assembly.rs`
-//! wraps them on load and the result arrays unwrap them at the end.
+//! wraps them on load and the result arrays unwrap them at the end. `EdgeType`
+//! names the kind of an edge, (port, neighbour port, twist), which picks the
+//! adjacency table the solver reads for it.
 //!
 //! Rust in this file:
 //! - newtypes: a tuple struct with one field, `struct SlotId(pub u32)`, is a
@@ -22,6 +24,9 @@
 //! - `impl Display`: the trait behind `{}` formatting.
 //!   <https://doc.rust-lang.org/rust-by-example/hello/print/print_display.html>
 //! - `serde(transparent)`: (de)serialise the newtype as the bare integer.
+//! - a struct with named fields (`EdgeType`) and field init shorthand
+//!   (`EdgeType { port, .. }` when a variable is named like the field).
+//!   <https://doc.rust-lang.org/book/ch05-01-defining-structs.html>
 //!
 //! Read next: `assembly.rs`.
 
@@ -124,10 +129,10 @@ impl PortId {
 
     /// The port on the opposite face of a box slot: `+X` ↔ `-X` and so on.
     ///
-    /// WFC: the symmetry invariant pairs `table(p, t)` with
-    /// `table(opposite(p), t)` (`.claude/rules/solver-core.md`, "Data model").
-    /// Only meaningful for the six box ports; cell complexes (research track)
-    /// will carry the opposite port on the edge instead.
+    /// WFC: a box-grid edge through `p` arrives at `opposite(p)`, which is how
+    /// schema 1.0 tables are read ([`EdgeType::box_grid`]). Only meaningful for
+    /// the six box ports; edges on surfaces and cell complexes carry the
+    /// neighbour's port themselves (schema 1.1).
     ///
     /// Cost: O(1).
     ///
@@ -173,17 +178,109 @@ impl Twist {
     }
 }
 
-/// Key into the per-(port, twist) table list: `port * 4 + twist`.
+/// The kind of an edge: port `port` of a slot meets port `neighbour_port` of
+/// its neighbour, at `twist`. Every edge of one kind shares one adjacency table.
 ///
-/// Cost: O(1).
+/// WFC: on a box grid `+X` always meets `-X` with twist 0, so six kinds cover
+/// every edge. On a surface shell the slot frames turn from face to face, so
+/// `+X` may meet `+Y`; the kind must name both ports (`docs/PLAN.md`,
+/// "Contract change: edge types (schema 1.1)").
 ///
-/// # Examples
-/// ```
-/// use lamda_core::ids::{PortId, Twist, table_key};
-/// assert_eq!(table_key(PortId(2), Twist(1)), 9);
-/// ```
-pub fn table_key(port: PortId, twist: Twist) -> usize {
-    port.index() * TWISTS + twist.index()
+/// WHY a struct with named fields and not a tuple `(PortId, PortId, Twist)`:
+/// the two ports have the same type, so a tuple would let `(p, q, t)` and
+/// `(q, p, t)` be swapped silently; field names make every use say which is which.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// RUST: the same derives as the newtypes above. `Copy` works because every
+// field is `Copy`, so an `EdgeType` is passed by value like an integer.
+pub struct EdgeType {
+    /// The port on the slot being looked at.
+    pub port: PortId,
+    /// The port on the neighbour that touches it.
+    pub neighbour_port: PortId,
+    /// The twist of the edge, the same seen from either side.
+    pub twist: Twist,
+}
+
+impl EdgeType {
+    /// The box-grid kind: `port` meets its opposite port.
+    ///
+    /// WHY: schema 1.0 files name only `(port, twist)` per table; this is how
+    /// they are read, so every 1.0 file keeps its exact meaning.
+    ///
+    /// Cost: O(1).
+    ///
+    /// # Examples
+    /// ```
+    /// use lamda_core::ids::{EdgeType, PortId, Twist};
+    /// let kind = EdgeType::box_grid(PortId(0), Twist(0));
+    /// assert_eq!(kind.neighbour_port, PortId(1)); // +X meets -X
+    /// ```
+    pub fn box_grid(port: PortId, twist: Twist) -> EdgeType {
+        EdgeType {
+            port,
+            neighbour_port: port.opposite(),
+            twist,
+        }
+        // RUST: `port,` is shorthand for `port: port,` when a variable has the
+        // field's name ("field init shorthand").
+    }
+
+    /// The same edge seen from the neighbour: the ports swap, the twist stays.
+    ///
+    /// WFC: the symmetry invariant pairs `table(e)` with `table(e.reverse())`
+    /// (`.claude/rules/solver-core.md`, "Data model").
+    ///
+    /// Cost: O(1).
+    ///
+    /// # Examples
+    /// ```
+    /// use lamda_core::ids::{EdgeType, PortId, Twist};
+    /// let kind = EdgeType { port: PortId(0), neighbour_port: PortId(2), twist: Twist(1) };
+    /// let back = kind.reverse();
+    /// assert_eq!((back.port, back.neighbour_port, back.twist), (PortId(2), PortId(0), Twist(1)));
+    /// assert_eq!(back.reverse(), kind);
+    /// ```
+    pub fn reverse(self) -> EdgeType {
+        // RUST: `self` by value: EdgeType is `Copy`, so the caller keeps its own copy.
+        EdgeType {
+            port: self.neighbour_port,
+            neighbour_port: self.port,
+            twist: self.twist,
+        }
+    }
+
+    /// Index of this kind's table in a flat list: `(port × ports + neighbour_port) × 4 + twist`.
+    ///
+    /// `ports` is the assembly's port count (6 for boxes), so a box assembly has
+    /// 6 × 6 × 4 = 144 possible keys, of which a grid uses 6 and a shell up to 18.
+    ///
+    /// Cost: O(1).
+    ///
+    /// # Examples
+    /// ```
+    /// use lamda_core::ids::{EdgeType, PortId, Twist};
+    /// let kind = EdgeType { port: PortId(2), neighbour_port: PortId(3), twist: Twist(1) };
+    /// assert_eq!(kind.key(6), (2 * 6 + 3) * 4 + 1);
+    /// ```
+    pub fn key(self, ports: usize) -> usize {
+        // RUST: plain `*` and `+` on usize. They cannot overflow here: ports is at
+        // most 255 (a u8), so the largest key is about 260,000.
+        (self.port.index() * ports + self.neighbour_port.index()) * TWISTS + self.twist.index()
+    }
+}
+
+impl fmt::Display for EdgeType {
+    /// Writes `port 0 to 2 twist 1`, for error messages.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // RUST: `'_` is an elided lifetime: the Formatter borrows something for a
+        // while and we do not need to name how long. `write!` returns
+        // `fmt::Result`, which this function passes on as its own result.
+        write!(
+            f,
+            "port {} to {} twist {}",
+            self.port, self.neighbour_port, self.twist
+        )
+    }
 }
 
 /// Writes the same `From` and `Display` impls for each newtype, so the four
@@ -273,17 +370,41 @@ mod tests {
         assert_eq!(back, SlotId(9));
     }
 
-    /// Table keys are unique over all (port, twist) pairs in range.
+    /// Table keys are unique over every (port, neighbour port, twist) in range
+    /// and stay below `ports² × 4`: two edge kinds sharing a key would make
+    /// the solver read the wrong table.
     #[test]
-    fn table_keys_are_unique() {
+    fn edge_type_keys_are_unique() {
         let mut keys: Vec<usize> = Vec::new();
         for port in 0..6u8 {
-            for twist in 0..4u8 {
-                keys.push(table_key(PortId(port), Twist(twist)));
+            for neighbour_port in 0..6u8 {
+                for twist in 0..4u8 {
+                    let kind = EdgeType {
+                        port: PortId(port),
+                        neighbour_port: PortId(neighbour_port),
+                        twist: Twist(twist),
+                    };
+                    keys.push(kind.key(6));
+                }
             }
         }
         keys.sort_unstable();
         keys.dedup();
-        assert_eq!(keys.len(), 24);
+        assert_eq!(keys.len(), 144);
+        assert_eq!(keys.last(), Some(&143));
+    }
+
+    /// Reversing twice gives the edge back, and a box-grid kind reversed is
+    /// the box-grid kind of the opposite port: the 1.0 reading stays consistent.
+    #[test]
+    fn reverse_is_an_involution() {
+        for port in 0..6u8 {
+            let kind = EdgeType::box_grid(PortId(port), Twist(0));
+            assert_eq!(kind.reverse().reverse(), kind);
+            assert_eq!(
+                kind.reverse(),
+                EdgeType::box_grid(PortId(port).opposite(), Twist(0))
+            );
+        }
     }
 }
