@@ -25,6 +25,16 @@ Build order steps 4 to 8 (``docs/PLAN.md``, "Rule compiler"), in this order:
 Every pair is inserted and removed symmetrically, so the result satisfies the
 symmetry invariant of ``.claude/rules/solver-core.md`` by construction; the
 compiler still asserts it.
+
+6. **Edge kinds** (phase 2, schema 1.1). When slots have frames, an edge kind
+   ``(p, q, t)`` stands for the relative rotation ``R`` taking the
+   neighbour's frame into this slot's frame. ``(v, w)`` is allowed across it
+   when ``(v, R·w)`` is allowed across ``p`` on a box grid, where ``R·w`` is
+   ``w``'s module in rotation ``R ∘ rotation(w)`` (:func:`edge_kind_pairs`).
+   So every rule above carries over with no new meaning. A module whose
+   freedom excludes ``R ∘ rotation(w)`` cannot sit there, and each table is
+   intersected with the transpose of its reverse, so the tables stay
+   symmetric even then.
 """
 
 from __future__ import annotations
@@ -33,7 +43,7 @@ from dataclasses import dataclass, field
 
 from ..model.kit import ConnectorPair, Kit, Rule
 from . import frames
-from .rotations import AXES, compose, cross, dot, freedom_rotations, neg, quarter_turn
+from .rotations import AXES, compose, cross, dot, freedom_rotations, inverse, neg, quarter_turn
 from .variants import Expansion, VariantInfo
 
 Pairs = list[set[tuple[int, int]]]
@@ -233,3 +243,55 @@ def variant_description(kit: Kit, variant: VariantInfo) -> str:
     """``name@rotation`` with its covered world faces, for audit messages."""
     faces = ", ".join(f"{frames.FACE_NAMES[d]}={c.name}" + (f"/{c.offset}" if c.offset else "") for d, c in enumerate(variant.faces) if c.covered)
     return f"{kit.modules[variant.module].name}@{variant.rotation} [{faces}]"
+
+
+EdgeKind = tuple[int, int, int]
+"""``(port, neighbour port, twist)``; the same alias as ``graph.EdgeKind``."""
+
+
+def turned_variants(expansion: Expansion, relative: int) -> list[int | None]:
+    """For each variant ``w``, the variant of its module in rotation ``relative ∘ rotation(w)``, or ``None``.
+
+    This is ``w`` seen from a slot whose frame differs from ``w``'s by ``relative``.
+    Rotations merged by deduplication map to the same variant, because two
+    rotations that look identical still look identical after both are turned.
+    """
+    return [expansion.variant_for(v.module, compose(relative, v.rotation)) for v in expansion.variants]
+
+
+def _kind_pairs_one_way(box: Pairs, expansion: Expansion, port: int, relative: int) -> set[tuple[int, int]]:
+    """``(v, w)`` with ``(v, relative·w)`` allowed across ``port`` on a box grid."""
+    turned = turned_variants(expansion, relative)
+    sources: dict[int, list[int]] = {}
+    for w, w_turned in enumerate(turned):
+        if w_turned is not None:
+            sources.setdefault(w_turned, []).append(w)
+    pairs: set[tuple[int, int]] = set()
+    for v, w_turned in box[port]:
+        for w in sources.get(w_turned, ()):
+            pairs.add((v, w))
+    return pairs
+
+
+def edge_kind_pairs(box: Pairs, expansion: Expansion, kinds: dict[EdgeKind, int]) -> dict[EdgeKind, set[tuple[int, int]]]:
+    """Allowed pairs per edge kind, from the box-grid pairs and each kind's relative rotation.
+
+    Each table is the derivation from its own side intersected with the
+    transpose of the derivation from the reverse side (relative rotation
+    inverted), so ``w ∈ T(p, q, t)[v] ⇔ v ∈ T(q, p, t)[w]`` holds even when a
+    module's freedom leaves out a rotation one side needs. Every kind's
+    reverse must be in ``kinds``, as it is for any graph whose edges come in
+    both directions.
+    """
+    one_way = {kind: _kind_pairs_one_way(box, expansion, kind[0], relative) for kind, relative in kinds.items()}
+    tables: dict[EdgeKind, set[tuple[int, int]]] = {}
+    for kind, relative in kinds.items():
+        back = (kind[1], kind[0], kind[2])
+        if back not in kinds:
+            raise ValueError(f"edge kind {kind} has no reverse edge")
+        if kinds[back] != inverse(relative):
+            raise AssertionError(f"edge kind {kind}: reverse rotation {kinds[back]} is not the inverse of {relative}")
+        mirrored = {(v, w) for w, v in one_way[back]}
+        tables[kind] = one_way[kind] & mirrored
+    return tables
+

@@ -92,6 +92,8 @@ def envelope_to_dict(envelope: Envelope) -> dict[str, Any]:
         data["priority"] = list(envelope.priority)
     if envelope.fixed is not None:
         data["fixed"] = list(envelope.fixed)
+    if envelope.frames is not None:
+        data["frames"] = list(envelope.frames)
     return data
 
 
@@ -102,6 +104,7 @@ def envelope_from_dict(data: dict[str, Any]) -> Envelope:
         weights={str(k): [float(x) for x in v] for k, v in data.get("weights", {}).items()},
         priority=None if data.get("priority") is None else [int(p) for p in data["priority"]],
         fixed=None if data.get("fixed") is None else [int(f) for f in data["fixed"]],
+        frames=None if data.get("frames") is None else [int(f) for f in data["frames"]],
     )
     envelope.check()
     return envelope

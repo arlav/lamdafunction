@@ -23,12 +23,20 @@ class Envelope:
     name or ``#tag`` (the ``wfc_w:`` attributes without their prefix) to one
     multiplier per slot; ``priority`` and ``fixed`` (module index, −1 free)
     are per slot too.
+
+    ``frames`` optionally gives each slot a frame: a rotation index (0..24)
+    taking the slot's local axes to world axes. A module placed in the slot
+    is rotated within that frame, so its world rotation is the frame composed
+    with the variant's rotation. ``None`` means every frame is the world's,
+    as on a plain box grid. Phase 2 uses frames for surface shells; on a box
+    grid they are a way to test that turned frames compile correctly.
     """
 
     cells: list[Cell]
     weights: dict[str, list[float]] = field(default_factory=dict)
     priority: list[int] | None = None
     fixed: list[int] | None = None
+    frames: list[int] | None = None
 
     def check(self) -> None:
         """Cells distinct; every per-slot list as long as ``cells``."""
@@ -42,6 +50,11 @@ class Envelope:
             raise ValueError(f"priority has {len(self.priority)} entries, envelope has {n} slots")
         if self.fixed is not None and len(self.fixed) != n:
             raise ValueError(f"fixed has {len(self.fixed)} entries, envelope has {n} slots")
+        if self.frames is not None:
+            if len(self.frames) != n:
+                raise ValueError(f"frames has {len(self.frames)} entries, envelope has {n} slots")
+            if any(not 0 <= f < 24 for f in self.frames):
+                raise ValueError("frames must be rotation indices in 0..24")
 
     @classmethod
     def box(cls, size: tuple[int, int, int]) -> Envelope:
