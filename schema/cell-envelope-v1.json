@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adventuroussystems.com/lamdafunction/schema/cell-envelope-v1.json",
+  "title": "LamdaFunction cell envelope, format lamdafunction-cells-1",
+  "description": "Hexahedral cells with corners, frames and explicit neighbours: what a shell builder, a box envelope or another host (TopologicPy, SpaceTope) hands the compiler. Written and read by addon/model/cells.py; meanings in its module docstring. The compiler also checks what a schema cannot: every port of every cell is exactly one neighbour or exposed, and every neighbour is listed from both sides with swapped ports and the same twist.",
+  "type": "object",
+  "required": ["format", "corners", "neighbours", "exposed"],
+  "additionalProperties": false,
+  "$defs": {
+    "index": {"type": "integer", "minimum": 0},
+    "port": {"type": "integer", "minimum": 0, "maximum": 5, "description": "+X, -X, +Y, -Y, +Z, -Z in the cell's own frame"},
+    "point": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
+  },
+  "properties": {
+    "format": {"const": "lamdafunction-cells-1"},
+    "corners": {
+      "description": "Per cell, eight corners in unit-cube order x + 2y + 4z (x from the -X face to the +X face, and so on).",
+      "type": "array",
+      "items": {"type": "array", "items": {"$ref": "#/$defs/point"}, "minItems": 8, "maxItems": 8}
+    },
+    "frames": {
+      "description": "Per cell, origin, x, y, z for rigid placement. Optional: derived from the corners when absent.",
+      "type": "array",
+      "items": {"type": "array", "items": {"$ref": "#/$defs/point"}, "minItems": 4, "maxItems": 4}
+    },
+    "sources": {
+      "description": "Per cell, where it came from, e.g. [\"face\", 12, 0] (mesh face and layer) or [\"cell\", x, y, z]. Optional.",
+      "type": "array",
+      "items": {"type": "array"}
+    },
+    "neighbours": {
+      "description": "[cell, port, other cell, other port, twist], both directions, sorted by (cell, port).",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [{"$ref": "#/$defs/index"}, {"$ref": "#/$defs/port"}, {"$ref": "#/$defs/index"}, {"$ref": "#/$defs/port"}, {"type": "integer", "minimum": 0, "maximum": 3}],
+        "minItems": 5,
+        "maxItems": 5
+      }
+    },
+    "exposed": {
+      "description": "[cell, port, group] for every port without a neighbour, sorted by (cell, port). Groups such as top, bottom, rim pick the boundary policy.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [{"$ref": "#/$defs/index"}, {"$ref": "#/$defs/port"}, {"type": "string"}],
+        "minItems": 3,
+        "maxItems": 3
+      }
+    },
+    "weights": {
+      "description": "Module name or #tag to one multiplier per cell; at or below 0 removes the module.",
+      "type": "object",
+      "additionalProperties": {"type": "array", "items": {"type": "number"}}
+    },
+    "priority": {"type": "array", "items": {"type": "integer"}},
+    "fixed": {"type": "array", "items": {"type": "integer", "minimum": -1}},
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["level", "message"],
+        "properties": {
+          "level": {"enum": ["error", "warning", "info"]},
+          "message": {"type": "string"},
+          "target": {"type": "array"}
+        }
+      }
+    }
+  }
+}

@@ -14,6 +14,8 @@ from typing import Any
 
 from ..model.kit import FACE_NAMES, Kit, Rule
 from .domains import Domains
+from .graph import SlotGraph
+from .rotations import compose
 from .rules import RuleNotes
 from .variants import Expansion
 
@@ -106,6 +108,37 @@ def audit_canonical(kit: Kit, expansion: Expansion, report: dict[str, Any]) -> l
     collapsed = report.get("collapsed", 0)
     if collapsed:
         items.append(AuditItem("info", f"{collapsed} slots are decided by propagation alone"))
+    return items
+
+
+def audit_seams(kit: Kit, expansion: Expansion, graph: SlotGraph) -> list[AuditItem]:
+    """Seams, where neighbouring slot frames turn, and the modules that cannot cross them.
+
+    Across an edge whose relative rotation ``R`` is not the identity, a module
+    can only meet its neighbour if its freedom includes ``R`` composed with its
+    own rotations (``rules.edge_kind_pairs``). A module with freedom None
+    follows its slot's frame, so it never crosses a seam; that is by design on
+    a surface, but the author should see how many edges it affects.
+    """
+    seams = sum(1 for r in graph.relative if r != 0) // 2
+    if seams == 0:
+        return []
+    items = [AuditItem("info", f"{seams} edges are seams: the slot frames on either side turn against each other")]
+    turning = {r for r in graph.relative if r != 0}
+    for module_index, module in enumerate(kit.modules):
+        rotations = [expansion.variants[v].rotation for v in expansion.by_module[module_index]]
+        blocked = {r for r in turning if all(expansion.variant_for(module_index, compose(r, rot)) is None for rot in rotations)}
+        if not blocked:
+            continue
+        count = sum(1 for r in graph.relative if r in blocked) // 2
+        items.append(
+            AuditItem(
+                "warning",
+                f"module {module.name} (freedom {module.freedom}) cannot cross {count} of the {seams} seams; "
+                "freedom Z lets a module turn with the surface",
+                ("module", module.name),
+            )
+        )
     return items
 
 

@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..model.kit import ConnectorPair, Kit, Rule
+from ..model.kit import Kit, Rule
 from . import frames
 from .rotations import AXES, compose, cross, dot, freedom_rotations, inverse, neg, quarter_turn
 from .variants import Expansion, VariantInfo

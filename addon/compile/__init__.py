@@ -13,7 +13,8 @@ order:
 - :mod:`variants`: modules × rotations, deduplicated into solver variants.
 - :mod:`rules`: connector pairs, Indifference and explicit rules into
   symmetric allowed pairs per port.
-- :mod:`graph`: the slot graph of an envelope in CSR form, and its exposed ports.
+- :mod:`graph`: the slot graph in CSR form, and its exposed ports; converts a
+  box envelope to a cell envelope and reads any cell envelope's neighbours.
 - :mod:`domains`: per-slot domains, weights, priorities and boundary classes.
 - :mod:`audit`: what the author should know before solving.
 - :mod:`assemble`: :func:`assemble.compile_assembly`, the entry point that

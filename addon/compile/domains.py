@@ -19,7 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..model.envelope import Envelope, SolveSettings
+from ..model.cells import CellEnvelope
+from ..model.envelope import SolveSettings
 from ..model.kit import Kit
 from .graph import SlotGraph
 from .variants import Expansion
@@ -54,13 +55,13 @@ class Domains:
         return data
 
 
-def module_multipliers(kit: Kit, envelope: Envelope) -> list[list[float]] | None:
+def module_multipliers(kit: Kit, envelope: CellEnvelope) -> list[list[float]] | None:
     """Per slot, per module: the product of the matching ``wfc_w:`` inputs, or ``None`` when there are none."""
     if not envelope.weights:
         return None
     keys = sorted(envelope.weights)
     rows: list[list[float]] = []
-    for slot in range(len(envelope.cells)):
+    for slot in range(envelope.slot_count):
         row: list[float] = []
         for module in kit.modules:
             factor = 1.0
@@ -73,13 +74,13 @@ def module_multipliers(kit: Kit, envelope: Envelope) -> list[list[float]] | None
     return rows
 
 
-def build_domains(kit: Kit, envelope: Envelope, settings: SolveSettings, expansion: Expansion, graph: SlotGraph) -> Domains:
+def build_domains(kit: Kit, envelope: CellEnvelope, settings: SolveSettings, expansion: Expansion, graph: SlotGraph) -> Domains:
     """Domain classes, weights, priorities and boundary classes for every slot."""
     multipliers = module_multipliers(kit, envelope)
     classes: dict[tuple[int, ...], int] = {}
     slot_domain: list[int] = []
     empty: list[int] = []
-    for slot in range(len(envelope.cells)):
+    for slot in range(envelope.slot_count):
         allowed: list[int] = []
         for module_index, variants in enumerate(expansion.by_module):
             if multipliers is not None and multipliers[slot][module_index] <= 0.0:

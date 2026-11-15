@@ -16,13 +16,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from ..model import cells as cells_module
+from ..model.cells import CellEnvelope
 from ..model.envelope import Envelope, SolveSettings
 from ..model.io import envelope_to_dict, kit_to_dict, settings_to_dict
 from ..model.kit import Kit
 from . import audit as audit_module
 from .audit import AuditItem
 from .domains import build_domains
-from .graph import build_graph
+from .graph import envelope_cells, graph_from_cells
 from .rotations import IDENTITY, compose
 from .rules import build_pairs, edge_kind_pairs
 from .variants import Expansion, expand_variants
@@ -38,15 +40,19 @@ SCHEMA_VERSION_TURNED = "1.1.0"
 class Compiled:
     """The compiled assembly document, its audit, and what is needed to map results back.
 
-    ``frames`` is each slot's frame (rotation index, local to world); a solved
-    variant's world rotation is ``compose(frames[slot], rotation)``
-    (:meth:`world_rotation`).
+    ``frames`` is each slot's frame (rotation index, local to world) when the
+    input was a box envelope; a solved variant's world rotation is then
+    ``compose(frames[slot], rotation)`` (:meth:`world_rotation`). A cell
+    envelope's frames are vectors (``cells.frames``), used for placement in
+    Blender (S5), and ``frames`` is empty. ``cells`` is the cell envelope the
+    compiler read.
     """
 
     document: dict[str, Any]
     audit: list[AuditItem]
     expansion: Expansion
     frames: tuple[int, ...] = ()
+    cells: CellEnvelope | None = None
 
     def world_rotation(self, slot: int, rotation: int) -> int:
         """The world rotation of a variant rotation placed in ``slot``: the slot's frame, then the rotation within it."""
@@ -65,10 +71,11 @@ class Compiled:
         return audit_module.worst_level(self.audit) == "error"
 
 
-def compile_hash(kit: Kit, envelope: Envelope, settings: SolveSettings) -> str:
+def compile_hash(kit: Kit, envelope: Envelope | CellEnvelope, settings: SolveSettings) -> str:
     """A stable hash of the inputs, for caching and reports."""
+    data = envelope_to_dict(envelope) if isinstance(envelope, Envelope) else cells_module.to_dict(envelope)
     payload = json.dumps(
-        {"kit": kit_to_dict(kit), "envelope": envelope_to_dict(envelope), "settings": settings_to_dict(settings)},
+        {"kit": kit_to_dict(kit), "envelope": data, "settings": settings_to_dict(settings)},
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -77,7 +84,7 @@ def compile_hash(kit: Kit, envelope: Envelope, settings: SolveSettings) -> str:
 
 def compile_assembly(
     kit: Kit,
-    envelope: Envelope,
+    envelope: Envelope | CellEnvelope,
     settings: SolveSettings,
     canonicalise: Callable[[str], dict[str, Any]] | None = None,
 ) -> Compiled:
@@ -86,13 +93,17 @@ def compile_assembly(
     ``canonicalise`` optionally takes the document text and returns the
     core's canonicalisation report (``lamda_core.canonicalise_json`` or the
     reference's equivalent); its findings join the audit.
+
+    ``envelope`` is a box envelope or a cell envelope (a shell, or a file from
+    another host); a box envelope is converted first, so the compiler reads
+    one structure.
     """
     kit.check()
-    envelope.check()
+    cells = envelope_cells(envelope) if isinstance(envelope, Envelope) else envelope
     expansion = expand_variants(kit)
     pairs, notes = build_pairs(kit, expansion)
-    graph = build_graph(envelope.cells, envelope.frames)
-    domains = build_domains(kit, envelope, settings, expansion, graph)
+    graph = graph_from_cells(cells)
+    domains = build_domains(kit, cells, settings, expansion, graph)
 
     if graph.is_box_grid():
         # Phase 1 form: six tables keyed by port alone, schema 1.0.0, byte-identical.
@@ -127,9 +138,14 @@ def compile_assembly(
         },
     }
 
-    items = audit_module.audit_kit(kit, expansion, notes) + audit_module.audit_domains(kit, domains)
+    items = [AuditItem(n.level, n.message, n.target) for n in cells.notes]
+    items += audit_module.audit_kit(kit, expansion, notes) + audit_module.audit_domains(kit, domains)
+    items += audit_module.audit_seams(kit, expansion, graph)
     if canonicalise is not None and not domains.empty_slots:
         report = canonicalise(json.dumps(document, separators=(",", ":")))
         items.extend(audit_module.audit_canonical(kit, expansion, report))
-    frames = tuple(envelope.frames) if envelope.frames is not None else tuple([IDENTITY] * len(envelope.cells))
-    return Compiled(document, items, expansion, frames)
+    if isinstance(envelope, Envelope):
+        frames = tuple(envelope.frames) if envelope.frames is not None else tuple([IDENTITY] * len(envelope.cells))
+    else:
+        frames = ()
+    return Compiled(document, items, expansion, frames, cells)
