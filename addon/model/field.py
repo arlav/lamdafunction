@@ -49,6 +49,32 @@ TIE: float = 1e-9
 """Two candidate choices closer than this (relative) count as a tie; the lower ``k`` wins."""
 
 
+FOLLOW: tuple[str, ...] = ("mesh", "field")
+"""``mesh`` (default): comb along the edge flow. ``field``: experimental, snap each face to the smoothed curvature line."""
+
+
+@dataclass(frozen=True, eq=False)
+class FieldSettings:
+    """What the author sets in the Surface panel (S5); :func:`compute` takes the same names.
+
+    ``guide`` is a world axis ``(x, y, z)``, or an ``n x 3`` array with one
+    direction per *polygon* of the source mesh (from :func:`uv_guide`, say);
+    a zero row means no guide on that face. Where a guide is set it decides
+    the sign of +X as well as its family, so "+X along world +Y" really
+    points up the Y axis and not down it. ``guide_weight`` scales the guide
+    against curvature: on a vault of radius ``r`` the curvature's vote is
+    ``curvature_weight / r`` per face and the guide's is ``guide_weight``
+    times its squared length in the tangent plane.
+    """
+
+    follow: str = "mesh"
+    curvature_weight: float = 1.0
+    guide: tuple[float, float, float] | np.ndarray | None = None
+    guide_weight: float = 1.0
+    smooth_weight: float = 1.0
+    iterations: int = 200
+
+
 @dataclass(frozen=True)
 class QuadMesh:
     """Vertices (``n x 3``) and quads (``m x 4``, corners in loop order: counter-clockwise seen from the normal)."""
@@ -182,7 +208,7 @@ def compute(
     mesh: QuadMesh,
     *,
     curvature_weight: float = 1.0,
-    guide: tuple[float, float, float] | None = None,
+    guide: tuple[float, float, float] | np.ndarray | None = None,
     guide_weight: float = 0.0,
     smooth_weight: float = 1.0,
     iterations: int = 200,
@@ -196,7 +222,14 @@ def compute(
     the family the curvature (and guide) prefer. ``follow="field"`` snaps every face to its
     own smoothed line, which follows curvature more closely and adds a seam wherever the
     curvature direction crosses a quad diagonal. Spike 7 compares the two.
+
+    ``guide`` is one world axis or an ``m x 3`` array, one direction per quad (a zero row
+    means no guide there). With a guide, each connected piece finally takes the half turn
+    whose +X points along the guide rather than against it, summed in face order; a whole
+    piece turning by a half keeps every seam, as the family turn does.
     """
+    if follow not in FOLLOW:
+        raise ValueError(f"follow must be one of {FOLLOW}, not {follow!r}")
     topo = topo or topology(mesh)
     vertices = mesh.vertices.astype(np.float64)
     corners = vertices[mesh.faces]  # m x 4 x 3
@@ -243,10 +276,12 @@ def compute(
     confidence = 2.0 * np.minimum(np.abs(mean), half)
     flip = np.where(mean >= 0.0, 1.0, -1.0)
     line_target = w.scale(flip).unit().scale(confidence * curvature_weight)
+    # The guide in each face's basis, as a direction (its sign matters, unlike a line).
+    toward: C | None = None
     if guide is not None and guide_weight > 0.0:
-        gx, gy, gz = (float(x) for x in guide)
-        g = C(u[:, 0] * gx + u[:, 1] * gy + u[:, 2] * gz, v[:, 0] * gx + v[:, 1] * gy + v[:, 2] * gz)
-        line_target = line_target + (g * g).unit().scale(g.norm2() * guide_weight)
+        axis = np.broadcast_to(np.asarray(guide, dtype=np.float64), (m, 3))
+        toward = C(_dot(u, axis), _dot(v, axis))
+        line_target = line_target + (toward * toward).unit().scale(toward.norm2() * guide_weight)
 
     # Transport across each side: the neighbour's u carried over the shared edge into this
     # face's basis, as a unit complex r; a line in the neighbour's basis times r^2 is the same
@@ -282,12 +317,9 @@ def compute(
             acc = acc + term.where(ok, C(zero, zero))
         line = acc.unit().where(acc.norm2() > 0.0, line)
 
-    if follow == "mesh":
-        k = _comb_mesh(line_target, topo, confidence)
-    elif follow == "field":
-        k = _comb(line, transport, topo, confidence)
-    else:
-        raise ValueError(f"follow must be 'mesh' or 'field', not {follow!r}")
+    k = _comb_mesh(line_target, topo, confidence) if follow == "mesh" else _comb(line, transport, topo, confidence)
+    if toward is not None:
+        k = _sign_from_guide(k, toward, pieces(topo))
     return Field(normal, u, v, shape, confidence, line_target, line, k, (transport[0], transport[1], transport[2], transport[3]))
 
 
@@ -434,3 +466,112 @@ def seam_turns_geometric(fld: Field, topo: Topology) -> np.ndarray:
             q = max(range(4), key=lambda i: (_along((int(fld.k[g]) + i) % 4, carried), -i))
             out[f, s] = (-q) % 4
     return out
+
+
+def pieces(topo: Topology) -> np.ndarray:
+    """Connected piece of each face across shared edges, numbered from the lowest face."""
+    m = len(topo.neighbour)
+    piece = np.full(m, -1, dtype=np.int64)
+    count = 0
+    for start in range(m):
+        if piece[start] >= 0:
+            continue
+        piece[start] = count
+        queue = deque([start])
+        while queue:
+            f = queue.popleft()
+            for s in range(4):
+                g = int(topo.neighbour[f, s])
+                if g >= 0 and piece[g] < 0:
+                    piece[g] = count
+                    queue.append(g)
+        count += 1
+    return piece
+
+
+def _sign_from_guide(k: np.ndarray, g: C, piece: np.ndarray) -> np.ndarray:
+    """Turn each piece by a half where its +X points against the guide, summed in face order.
+
+    How far arm ``k`` points along ``g`` is exact (:func:`_along`); ties keep ``k``.
+    """
+    count = int(piece.max()) + 1 if len(piece) else 0
+    vote = np.zeros(count)
+    for f in range(len(k)):
+        vote[piece[f]] += _along(int(k[f]), (float(g.re[f]), float(g.im[f])))
+    half = np.where(vote < -TIE, 2, 0)
+    return (k + half[piece]) % 4
+
+
+def uv_guide(vertices: np.ndarray, polygons: list[list[int]] | np.ndarray, uv: list[list[tuple[float, float]]] | np.ndarray, axis: int = 0) -> np.ndarray:
+    """A guide per polygon: the direction in which UV coordinate ``axis`` (0 for U, 1 for V) grows.
+
+    ``uv[i]`` lists polygon ``i``'s UV per corner, in the polygon's loop order. On each quad
+    the gradient is fitted by least squares to the four sides, in the quad's tangent plane
+    (2 x 2 normal equations, Cramer's rule), so it does not depend on which way the face
+    faces. Non-quads and quads whose UVs do not change get a zero row: no guide there.
+    The length is normalised away, so a stretched UV map guides as strongly as a square one.
+    """
+    vertices = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
+    out = np.zeros((len(polygons), 3))
+    for i, polygon in enumerate(polygons):
+        if len(polygon) != 4:
+            continue
+        p = vertices[np.asarray(polygon, dtype=np.int64)]
+        w = np.array([float(c[axis]) for c in uv[i]])
+        n = _normalise(_cross(p[2] - p[0], p[3] - p[1]))
+        x_axis = (p[1] + p[2]) - (p[3] + p[0])
+        e1 = _normalise(x_axis - _dot(x_axis, n) * n)
+        e2 = _cross(n, e1)
+        saa = sab = sbb = sad = sbd = 0.0
+        for s in range(4):
+            d = p[(s + 1) % 4] - p[s]
+            a, b, dw = float(_dot(d, e1)), float(_dot(d, e2)), float(w[(s + 1) % 4] - w[s])
+            saa, sab, sbb = saa + a * a, sab + a * b, sbb + b * b
+            sad, sbd = sad + a * dw, sbd + b * dw
+        det = saa * sbb - sab * sab
+        if det == 0.0:
+            continue
+        gx, gy = (sad * sbb - sab * sbd) / det, (saa * sbd - sab * sad) / det
+        out[i] = _normalise(gx * e1 + gy * e2)
+    return out
+
+
+def irregular_vertices(mesh: QuadMesh, topo: Topology) -> list[tuple[int, int]]:
+    """``(vertex, valence)`` for every interior vertex with other than four quads around it.
+
+    These are the singularities of the mesh's cross field: around a vertex of valence
+    ``n`` the edge flow turns by ``(4 - n)`` quarter turns, so no labelling can be regular
+    on every edge near it, and the seams in ``follow="mesh"`` start at these vertices. A
+    quad sphere has eight, of valence 3. Vertices on an open boundary are not counted.
+    """
+    valence = np.zeros(len(mesh.vertices), dtype=np.int64)
+    boundary = np.zeros(len(mesh.vertices), dtype=bool)
+    for f in range(len(mesh.faces)):
+        for s in range(4):
+            valence[mesh.faces[f, s]] += 1
+            if topo.neighbour[f, s] < 0:
+                boundary[mesh.faces[f, s]] = True
+                boundary[mesh.faces[f, (s + 1) % 4]] = True
+    irregular = (valence > 0) & (valence != 4) & ~boundary
+    return [(int(v), int(valence[v])) for v in np.nonzero(irregular)[0]]
+
+
+def seam_edges(mesh: QuadMesh, k: np.ndarray, topo: Topology) -> list[tuple[int, int, int]]:
+    """``(a, b, turn)`` per seam edge, ``a < b`` its vertices, ``turn`` 1 (a quarter) or 2 (a half).
+
+    Taken from :func:`seam_turns`, so from the labelling alone; a quarter turn one way and
+    three the other are the same seam. Sorted by vertex pair, for the audit and the overlay.
+    """
+    turns = seam_turns(k, topo)
+    out: list[tuple[int, int, int]] = []
+    for f in range(len(k)):
+        for s in range(4):
+            g = int(topo.neighbour[f, s])
+            # Each edge is seen from both faces; keep the side of the lower face.
+            if g < f or turns[f, s] <= 0:
+                continue
+            if g == f and s > int(topo.neighbour_side[f, s]):
+                continue
+            a, b = int(mesh.faces[f, s]), int(mesh.faces[f, (s + 1) % 4])
+            out.append((min(a, b), max(a, b), min(int(turns[f, s]), 4 - int(turns[f, s]))))
+    return sorted(out)

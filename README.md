@@ -72,6 +72,14 @@ Change the seed for another network, or try the variations at the end of the tut
 
 The figures are rendered headless from the example file by `scripts/render_readme.py`.
 
+### On a surface (in development)
+
+Phase 2 wraps a kit onto any quad mesh instead of a box. Each quad becomes a cell of a shell, a direction field decides which way each cell's +X points, and **Deform to cells** bends every module into its cell. Neighbouring cells share the corners of their common face, so pipe ends meet exactly, even where the field turns and three quads meet at a corner of the original cube:
+
+![The pipes kit wrapped onto a quad sphere, every pipe continuous](docs/figures/surface-pipes.png)
+
+<sub>`examples/surface-pipes.blend`: the same six modules on a cube with Subdivision Surface and Cast modifiers (384 cells, seed 2). Rendered by `scripts/render_surface.py`. Not in a release yet.</sub>
+
 ## Install
 
 You need **Blender 5.2 LTS** or newer.
@@ -192,8 +200,9 @@ CI (`.github/workflows/ci.yml`) builds wheels for Windows x64, Linux x64, macOS 
 | --- | --- |
 | 0, spikes | Done: collection ordering, face frames and twists, the wheel inside Blender, bitset benchmark, attribute write speed |
 | 1, MVP | Built: single-cell modules, connectors and rules, rotational freedom, box and mesh envelopes, boundaries, audit, Materialise and Inspect |
-| 2 | Multi-cell modules, connector twists in the UI, weights as attributes, growth mode with supply caps, partial re-solve, seed browser |
-| 3 and research | Global constraints (connectivity, support, counts, symmetry), solving in blocks, learning rules from examples, SpaceTope layouts as envelopes, IFC export through Bonsai |
+| 2, surfaces | In progress: shells that follow a quad mesh, a direction field with a curvature, world-axis or UV guide, rigid placement and Deform to cells; next several layers, per-group boundaries and painted weights |
+| 3, parity | Multi-cell modules, connector twists in the UI, weights as attributes, growth mode with supply caps, partial re-solve, seed browser |
+| 4 and research | Global constraints (connectivity, support, counts, symmetry), solving in blocks, learning rules from examples, SpaceTope layouts as envelopes, IFC export through Bonsai |
 
 Backtracking and parallel attempts are already in both solvers.
 

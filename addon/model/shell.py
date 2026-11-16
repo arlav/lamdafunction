@@ -28,7 +28,9 @@ and the cell's corner ``x + 2y + 4z`` is ``(0,0) → c'0``, ``(1,0) → c'1``,
 ``(1,1) → c'2``, ``(0,1) → c'3``, with ``z`` from the lower layer boundary to
 the upper one. So quad side ``s`` (from ``c_s`` to ``c_{s+1}``) is port
 ``SIDE_PORT[(s - k) mod 4]`` (-Y, +X, +Y, -X), -Z faces inward and +Z
-outward. ``k`` comes from the direction field (S4); without one it is 0.
+outward. ``k`` comes from the direction field (:mod:`addon.model.field`), run
+on the oriented mesh with cut and non-manifold edges left out; without one
+it is 0.
 
 **Edges.** Across a mesh edge, side ``s`` of face ``f`` meets side ``t`` of
 face ``g``. With a consistent orientation both frames share +Z, so the
@@ -54,7 +56,7 @@ from ..compile import frames as faces
 from ..compile.graph import edge_twist
 from ..compile.rotations import apply, rotations_about
 from .cells import CellEnvelope, Exposed, Neighbour, Note, frame_of, inverted_cells
-from .field import SIDE_PORT, QuadMesh, topology, vertex_normals
+from .field import SIDE_PORT, FieldSettings, QuadMesh, Topology, compute, irregular_vertices, seam_edges, topology, vertex_normals
 
 OFFSETS = ("outward", "inward", "centred")
 """Where the thickness goes relative to the surface."""
@@ -157,6 +159,60 @@ def orient(mesh: QuadMesh) -> tuple[QuadMesh, list[int], list[tuple[int, int]]]:
     return result, [int(f) for f in np.nonzero(flip)[0]], list(topology(result).flipped)
 
 
+def _cut(mesh: QuadMesh, topo: Topology, cut: set[tuple[int, int]]) -> Topology:
+    """The topology with the cut edges disconnected, so the field does not comb across them."""
+    neighbour = topo.neighbour.copy()
+    neighbour_side = topo.neighbour_side.copy()
+    for f in range(len(mesh.faces)):
+        for s in range(4):
+            a, b = int(mesh.faces[f, s]), int(mesh.faces[f, (s + 1) % 4])
+            if (min(a, b), max(a, b)) in cut:
+                neighbour[f, s] = neighbour_side[f, s] = -1
+    return Topology(neighbour, neighbour_side, topo.non_manifold, topo.flipped)
+
+
+def _field_labelling(
+    mesh: QuadMesh, topo: Topology, settings: FieldSettings, quad_of: list[int], polygons: int
+) -> tuple[np.ndarray, list[Note]]:
+    """``k`` per quad from the direction field, and the notes on its singularities and seams."""
+    guide = settings.guide
+    if guide is not None:
+        guide = np.asarray(guide, dtype=np.float64)
+        if guide.ndim == 2:
+            if len(guide) != polygons:
+                raise ValueError(f"the guide has {len(guide)} rows, the mesh has {polygons} faces")
+            guide = guide[quad_of]
+        elif guide.shape != (3,):
+            raise ValueError("a guide is one world axis (x, y, z) or one row per face")
+    fld = compute(
+        mesh,
+        topo=topo,
+        follow=settings.follow,
+        curvature_weight=settings.curvature_weight,
+        guide=guide,
+        guide_weight=settings.guide_weight,
+        smooth_weight=settings.smooth_weight,
+        iterations=settings.iterations,
+    )
+    notes: list[Note] = []
+    singular = irregular_vertices(mesh, topo)
+    listed = [
+        Note("info", f"vertex {v} has {n} faces around it: the field turns by {4 - n} quarter(s) there and seams start here", ("mesh_vertex", v))
+        for v, n in singular
+    ]
+    notes += _limited(listed, "info", "irregular vertices", len(listed))
+    seams = seam_edges(mesh, fld.k, topo)
+    if seams:
+        half = sum(1 for _, _, t in seams if t == 2)
+        why = f"from {len(singular)} irregular vertices" if singular else "where the field leaves the edge flow"
+        notes.append(Note("info", f"the direction field has {len(seams)} seams ({len(seams) - half} quarter, {half} half turns), {why}"))
+        if settings.follow == "field":
+            plain = len(seam_edges(mesh, compute(mesh, topo=topo, follow="mesh").k, topo))
+            if plain < len(seams):
+                notes.append(Note("warning", f"follow 'field' gives {len(seams)} seams where 'mesh' gives {plain}; seams block modules that cannot turn"))
+    return fld.k, notes
+
+
 def build_shell(
     vertices: np.ndarray,
     polygons: Sequence[Sequence[int]],
@@ -165,6 +221,7 @@ def build_shell(
     layers: int = 1,
     offset: str = "outward",
     k: Sequence[int] | None = None,
+    field: FieldSettings | None = None,
     face_inputs: dict[str, Any] | None = None,
 ) -> CellEnvelope:
     """The cell envelope of a shell over a polygon mesh.
@@ -172,7 +229,11 @@ def build_shell(
     ``polygons`` lists each face's vertex indices in loop order. ``k`` gives
     the labelling turn per *quad* (in the order quads appear in
     ``polygons``, after :func:`orient`), from the direction field; ``None``
-    means 0 everywhere.
+    means 0 everywhere. ``field`` computes ``k`` instead, with the
+    direction field on the oriented quads; give one or the other. A per-face
+    guide in ``field`` has one row per *polygon*, like ``face_inputs``.
+    The field adds notes: its singularities (irregular vertices) and its
+    seams.
     ``face_inputs`` may hold ``weights`` (name to one value per polygon),
     ``priority`` and ``fixed`` (one per polygon); every layer of a face takes
     the face's value. Sources are ``("face", polygon index, layer)``.
@@ -194,6 +255,8 @@ def build_shell(
             skipped.append(Note("warning", f"face {index} has {len(polygon)} sides and is skipped; only quads become slots", ("mesh_face", index)))
     notes += _limited(skipped, "warning", "non-quad faces skipped", len(skipped))
     m = len(quad_of)
+    if k is not None and field is not None:
+        raise ValueError("give the labelling k or a direction field, not both")
     labelling = np.zeros(m, dtype=np.int64) if k is None else np.asarray(k, dtype=np.int64) % 4
     if len(labelling) != m:
         raise ValueError(f"k has {len(labelling)} entries, the mesh has {m} quads")
@@ -210,6 +273,9 @@ def build_shell(
     cut = set(inconsistent)
     for a, b in inconsistent:
         notes.append(Note("warning", f"edge {a}-{b} joins faces that cannot be oriented alike (one-sided surface); it is cut", ("mesh_edge", a, b)))
+    if field is not None and m > 0:
+        labelling, field_notes = _field_labelling(mesh, _cut(mesh, topo, cut), field, quad_of, len(polygons))
+        notes += field_notes
 
     # Labelling: rotate each quad's corner list by its k, so c'0 is corner (0, 0).
     turned = np.array([np.roll(mesh.faces[f], -int(labelling[f])) for f in range(m)], dtype=np.int64).reshape(-1, 4)

@@ -92,6 +92,17 @@ def barrel_vault(n_arch: int = 24, n_length: int = 32, radius: float = 3.0, leng
     return orient(mesh, lambda c: np.stack((np.zeros(len(c)), c[:, 1], c[:, 2]), axis=1))
 
 
+def cylinder(n_around: int = 32, n_height: int = 12, radius: float = 1.5, height: float = 4.0) -> QuadMesh:
+    """An open tube about the Z axis: curved around, straight along; closed around, open at both ends."""
+
+    def surface(s: np.ndarray, t: np.ndarray) -> np.ndarray:
+        a = s * 2.0 * np.pi
+        return np.stack((radius * np.cos(a), radius * np.sin(a), t * height), axis=-1)
+
+    mesh = grid(surface, n_around, n_height, closed_s=True)
+    return orient(mesh, lambda c: np.stack((c[:, 0], c[:, 1], np.zeros(len(c))), axis=1))
+
+
 def saddle(n: int = 30, size: float = 3.0, depth: float = 0.25) -> QuadMesh:
     """``z = depth (x^2 - y^2)``: curvatures of opposite sign, equal and opposite at the centre."""
 

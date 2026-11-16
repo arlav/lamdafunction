@@ -1,20 +1,50 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Viewport overlay: the cell cage and the connector arrows of the active module.
+"""Viewport overlay: the active module's cage and connector arrows, and the surface field.
 
 Arrows are drawn in world space from the face centre along
 ``frames.arrow(face, offset)``, coloured by the face's axis (X red, Y green,
 Z blue), so an author sees whether two connectors' arrows will coincide
 (twist 0) before solving. Terminator faces get a short white tick.
+
+In surface mode the last compile also leaves the field here (:func:`set_field`):
+each inner-layer cell's +X as a red line from its base, and the seams, where
+neighbouring frames turn, in yellow. It is computed once per compile, not per
+redraw, and drawn while the scene's ``show_field`` is on.
 """
 
 from __future__ import annotations
 
+import numpy as np
+
 import bpy
 
 from ..compile import frames
+from ..model.cells import CellEnvelope
+from ..model.placement import field_marks
 from .panels import active_module
 
 _HANDLE = None
+_FIELD: tuple[list[tuple[float, float, float]], list[tuple[float, float, float, float]]] = ([], [])
+
+ARROW = (0.95, 0.25, 0.2, 1.0)
+SEAM = (1.0, 0.85, 0.1, 1.0)
+
+
+def set_field(cells: CellEnvelope | None) -> None:
+    """Keep the field lines of a compiled shell for drawing (``None`` clears them)."""
+    global _FIELD
+    if cells is None:
+        _FIELD = ([], [])
+        return
+    arrows, seams = field_marks(cells)
+    coords = [tuple(float(x) for x in p) for p in np.concatenate([arrows, seams]).reshape(-1, 3)]
+    colours = [ARROW] * (2 * len(arrows)) + [SEAM] * (2 * len(seams))
+    _FIELD = (coords, colours)  # type: ignore[assignment]
+
+
+def field_lines() -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float, float]]]:
+    """The field lines kept by the last compile."""
+    return _FIELD
 
 
 def _lines(context: bpy.types.Context) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float, float]]]:
@@ -68,6 +98,9 @@ def _draw() -> None:
 
     context = bpy.context
     coords, colours = _lines(context)
+    if context.scene is not None and context.scene.lamdafunction.show_field and context.scene.lamdafunction.envelope_mode == "SURFACE":
+        coords = coords + _FIELD[0]
+        colours = colours + _FIELD[1]
     if not coords:
         return
     shader = gpu.shader.from_builtin("SMOOTH_COLOR")

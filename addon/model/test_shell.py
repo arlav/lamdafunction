@@ -23,8 +23,8 @@ from addon.compile.test_tube import tube_kit
 from addon.model import Envelope, Module, SolveSettings
 from addon.model import cells as cells_module
 from addon.model.cells import CellEnvelope, corner_jacobians
-from addon.model.field import seam_turns, topology
-from addon.model.sample_meshes import quad_sphere
+from addon.model.field import FieldSettings, seam_turns, topology
+from addon.model.sample_meshes import barrel_vault, quad_sphere, saddle
 from addon.model.shell import build_shell, orient
 from reference import load_assembly, solve, validate
 
@@ -346,3 +346,73 @@ def test_shell_document_agrees_with_the_rust_core() -> None:
     ref = solve(load_assembly(result.text))
     assert list(rust.variant) == list(ref.variant)
     assert lamda_core.validate_json(result.text, rust.variant, rust.state) == []
+
+
+def test_field_labels_a_quad_sphere() -> None:
+    """The field's k reaches the shell: eight singularities noted, seams as the field says, and it solves."""
+    mesh = quad_sphere(4)
+    polygons = [tuple(int(v) for v in f) for f in mesh.faces]
+    shell = build_shell(mesh.vertices, polygons, thickness=0.2, field=FieldSettings())
+    singular = [n for n in shell.notes if n.target[0] == "mesh_vertex"]
+    assert len(singular) == 8 and all("3 faces" in n.message for n in singular)
+    summary = [n.message for n in shell.notes if "direction field has" in n.message]
+    assert len(summary) == 1 and "from 8 irregular vertices" in summary[0]
+    result = compile_assembly(tube_kit(), shell, SETTINGS)
+    assert not result.has_errors, [i.message for i in result.audit]
+    assembly = load_assembly(result.text)
+    outcome = solve(assembly)
+    assert outcome.report["outcome"] == "solved"
+    assert validate(assembly, outcome.variant, outcome.state) == []
+
+
+@pytest.mark.parametrize(("axis", "k"), [((1.0, 0.0, 0.0), 0), ((0.0, 1.0, 0.0), 1), ((-1.0, 0.0, 0.0), 2), ((0.0, -1.0, 0.0), 3)])
+def test_flat_grid_with_a_guide_is_a_turned_box(axis: tuple[float, float, float], k: int) -> None:
+    """A world-axis guide on a flat grid turns every cell alike: the same cells as giving that k by hand."""
+    vertices, polygons = flat_grid(3, 2)
+    guided = build_shell(vertices, polygons, field=FieldSettings(guide=axis))
+    same_cells(guided, build_shell(vertices, polygons, k=[k] * len(polygons)))
+    assert np.allclose(guided.frames[:, 1], axis)
+    assert not any("direction field" in n.message for n in guided.notes)
+
+
+def test_vault_cells_follow_the_arches() -> None:
+    """With the field, every cell's +X lies in its arch's plane (no component along the vault)."""
+    mesh = barrel_vault(8, 6)
+    shell = build_shell(mesh.vertices, [tuple(int(v) for v in f) for f in mesh.faces], thickness=0.2, field=FieldSettings())
+    assert np.abs(shell.frames[:, 1, 0]).max() < 1e-9
+
+
+def test_per_face_guide_skips_non_quads() -> None:
+    """A per-polygon guide is taken per quad, so a skipped triangle does not shift the rows."""
+    vertices, polygons = flat_grid(2, 1)
+    vertices = np.vstack([vertices, [(5.0, 5.0, 0.0)]])
+    polygons = [(0, 1, 6), *polygons]
+    rows = np.array([(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 1.0, 0.0)])
+    shell = build_shell(vertices, polygons, field=FieldSettings(guide=rows))
+    assert np.allclose(shell.frames[:, 1], (0.0, 1.0, 0.0))
+    with pytest.raises(ValueError):
+        build_shell(vertices, polygons, field=FieldSettings(guide=rows[:2]))
+
+
+def test_field_and_k_are_exclusive() -> None:
+    vertices, polygons = flat_grid(1, 1)
+    with pytest.raises(ValueError):
+        build_shell(vertices, polygons, k=[0], field=FieldSettings())
+
+
+def test_field_does_not_comb_across_a_cut() -> None:
+    """On a Möbius strip the field combs the uncut strip, so it adds no seam: the only open side is the cut."""
+    vertices, polygons = mobius()
+    shell = build_shell(vertices, polygons, thickness=0.1, field=FieldSettings())
+    assert not any("direction field has" in n.message for n in shell.notes)
+    assert len([x for x in shell.neighbours if x.port < 4]) == 2 * (len(polygons) - 1)
+
+
+def test_field_mode_seams_are_compared_with_mesh_mode() -> None:
+    """The experimental mode warns when it adds seams the default would not: 19 against 0 on a saddle."""
+    mesh = saddle(8)
+    polygons = [tuple(int(v) for v in f) for f in mesh.faces]
+    shell = build_shell(mesh.vertices, polygons, thickness=0.2, field=FieldSettings(follow="field"))
+    assert any("gives 19 seams where 'mesh' gives 0" in n.message for n in shell.notes)
+    plain = build_shell(mesh.vertices, polygons, thickness=0.2, field=FieldSettings())
+    assert not any("seams" in n.message for n in plain.notes)

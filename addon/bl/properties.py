@@ -19,6 +19,7 @@ from bpy.props import (
     CollectionProperty,
     EnumProperty,
     FloatProperty,
+    FloatVectorProperty,
     IntProperty,
     PointerProperty,
     StringProperty,
@@ -39,6 +40,30 @@ RULE_KIND_ITEMS = [
     ("disallowed", "Disallowed", "These two faces may never touch"),
     ("exclusive", "Exclusive", "These two faces touch only each other"),
 ]
+
+ENVELOPE_MODE_ITEMS = [
+    ("POINTS", "Points", "Each vertex of the envelope is a slot on a grid"),
+    ("SURFACE", "Surface", "Each quad of the envelope grows into cells through a thickness"),
+]
+
+OFFSET_ITEMS = [
+    ("outward", "Outward", "The shell grows from the surface along its normals"),
+    ("inward", "Inward", "The shell grows from the surface against its normals"),
+    ("centred", "Centred", "The surface runs through the middle of the shell"),
+]
+
+FOLLOW_ITEMS = [
+    ("mesh", "Mesh", "Frames follow the mesh's edge flow; seams only where the mesh forces them"),
+    ("field", "Field (experimental)", "Each face snaps to the smoothed curvature direction; adds seams"),
+]
+
+GUIDE_ITEMS = [
+    ("NONE", "None", "Curvature alone picks which edge direction is +X"),
+    ("AXIS", "Axis", "+X points along a world axis where it can"),
+    ("UV", "UV", "+X points where the active UV map's U (or V) grows"),
+]
+
+UV_AXIS_ITEMS = [("0", "U", "Follow U"), ("1", "V", "Follow V")]
 
 LEVEL_ICONS = {"error": "CANCEL", "warning": "ERROR", "info": "INFO"}
 
@@ -102,6 +127,22 @@ class SceneProps(bpy.types.PropertyGroup):
 
     library: PointerProperty(name="Library", type=bpy.types.Collection, description="Collection whose child collections are the modules")
     envelope: PointerProperty(name="Envelope", type=bpy.types.Object, poll=_is_mesh, description="Mesh whose vertices are the slots")
+    envelope_mode: EnumProperty(name="Mode", items=ENVELOPE_MODE_ITEMS, default="POINTS")
+    surface_thickness: FloatProperty(name="Thickness", min=1e-4, default=1.0, description="Thickness of the shell, all layers together")
+    surface_layers: IntProperty(name="Layers", min=1, max=64, default=1, description="Cells through the thickness")
+    surface_offset: EnumProperty(name="Offset", items=OFFSET_ITEMS, default="outward")
+    field_follow: EnumProperty(name="Follow", items=FOLLOW_ITEMS, default="mesh")
+    field_curvature_weight: FloatProperty(name="Curvature", min=0.0, default=1.0, description="How strongly curvature picks +X")
+    field_guide: EnumProperty(name="Guide", items=GUIDE_ITEMS, default="NONE")
+    field_guide_axis: FloatVectorProperty(name="Axis", size=3, default=(0.0, 0.0, 1.0), description="World direction for +X")
+    field_guide_uv: EnumProperty(name="UV axis", items=UV_AXIS_ITEMS, default="0")
+    field_guide_weight: FloatProperty(name="Guide weight", min=0.0, default=1.0, description="Against curvature: on a vault of radius r curvature weighs 1/r")
+    show_field: BoolProperty(name="Show field", default=True, description="Draw each cell's +X and the seams in the viewport")
+    deform_to_cells: BoolProperty(
+        name="Deform to cells",
+        default=True,
+        description="Bend each module into its cell on a surface, so connectors meet without gaps (realises the geometry); off places modules rigidly",
+    )
     cell_size: FloatProperty(name="Cell size", min=1e-4, default=1.0, description="Size of one slot; used when the envelope has no wfc_cell attribute")
     pairs: CollectionProperty(type=PairProps)
     pair_index: IntProperty(default=0)

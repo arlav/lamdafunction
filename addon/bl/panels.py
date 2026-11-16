@@ -143,7 +143,26 @@ class LAMDAFUNCTION_PT_envelope(LamdaPanel, bpy.types.Panel):
         props = context.scene.lamdafunction
         layout = self.layout
         layout.prop(props, "envelope")
-        layout.operator("lamdafunction.box_envelope", icon="MESH_GRID")
+        layout.prop(props, "envelope_mode", expand=True)
+        if props.envelope_mode == "POINTS":
+            layout.operator("lamdafunction.box_envelope", icon="MESH_GRID")
+        else:
+            col = layout.column(align=True)
+            col.prop(props, "surface_thickness")
+            col.prop(props, "surface_layers")
+            col.prop(props, "surface_offset", text="")
+            box = layout.box()
+            box.label(text="Direction field", icon="ORIENTATION_NORMAL")
+            box.prop(props, "field_follow")
+            box.prop(props, "field_curvature_weight")
+            box.prop(props, "field_guide")
+            if props.field_guide == "AXIS":
+                box.prop(props, "field_guide_axis", text="")
+            elif props.field_guide == "UV":
+                box.prop(props, "field_guide_uv", expand=True)
+            if props.field_guide != "NONE":
+                box.prop(props, "field_guide_weight")
+            box.prop(props, "show_field")
         row = layout.row(align=True)
         row.prop(props, "closed")
         sub = row.row()
@@ -185,6 +204,8 @@ class LAMDAFUNCTION_PT_results(LamdaPanel, bpy.types.Panel):
         layout = self.layout
         if props.report:
             layout.label(text=props.report, icon="CHECKMARK")
+        if props.envelope_mode == "SURFACE":
+            layout.prop(props, "deform_to_cells")
         row = layout.row(align=True)
         row.operator("lamdafunction.materialise", icon="OUTLINER_OB_GROUP_INSTANCE")
         row.operator("lamdafunction.inspect", icon="VIEWZOOM")

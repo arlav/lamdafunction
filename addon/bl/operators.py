@@ -27,7 +27,8 @@ from ..model.envelope import SolveSettings
 from . import backend as backend_module
 from . import envelope as envelope_module
 from . import library as library_module
-from . import nodes, results
+from . import nodes, overlay, results
+from .envelope import Slots
 from .properties import SceneProps
 
 ASSEMBLY_TEXT = "lamdafunction.assembly.json"
@@ -41,9 +42,9 @@ class SolveJob:
     text: str
     backend: backend_module.Backend
     progress: Any
-    positions: np.ndarray
-    cells: list[tuple[int, int, int]]
+    slots: Slots
     seed: int
+    cell_size: float
     started: float = field(default_factory=time.perf_counter)
     thread: threading.Thread | None = None
     result: Any = None
@@ -69,7 +70,7 @@ class SolveJob:
         """One line for the status bar."""
         snap = self.progress.snapshot()
         return (
-            f"LamdaFunction: attempt {snap.get('attempt', 0)}, {snap.get('collapsed', 0)}/{len(self.cells)} slots, "
+            f"LamdaFunction: attempt {snap.get('attempt', 0)}, {snap.get('collapsed', 0)}/{self.slots.count} slots, "
             f"{snap.get('backtracks', 0)} backtracks, {time.perf_counter() - self.started:.1f} s (Esc cancels)"
         )
 
@@ -110,31 +111,35 @@ def fill_audit(props: SceneProps, compiled: Compiled) -> None:
     props.audit_index = 0
 
 
-def compile_scene(context: bpy.types.Context) -> tuple[Compiled, np.ndarray, list[tuple[int, int, int]], backend_module.Backend]:
-    """Read the library and the envelope, compile, audit with the backend's canonicalisation, store the text."""
+def compile_scene(context: bpy.types.Context) -> tuple[Compiled, Slots, backend_module.Backend]:
+    """Read the library and the envelope, compile, audit with the backend's canonicalisation, store the text.
+
+    In surface mode the shell's field (each cell's +X and the seams) goes to the overlay.
+    """
     scene = context.scene
     props = scene.lamdafunction
     if props.envelope is None:
         raise ValueError("no envelope object is set")
     depsgraph = context.evaluated_depsgraph_get()
     kit = library_module.read_kit(props, depsgraph)
-    envelope, positions = envelope_module.read_envelope(props.envelope, props.cell_size, depsgraph)
+    slots = envelope_module.read_slots(props.envelope, props, depsgraph)
+    overlay.set_field(slots.envelope if slots.surface else None)  # type: ignore[arg-type]
     chosen = backend_module.choose_backend()
-    compiled = compile_assembly(kit, envelope, settings_from_props(props), chosen.canonicalise)
+    compiled = compile_assembly(kit, slots.envelope, settings_from_props(props), chosen.canonicalise)
     store_text(ASSEMBLY_TEXT, compiled.text)
     props.compile_hash = compiled.document["compile_hash"]
     fill_audit(props, compiled)
     nodes.ensure_instancer(scene, props.library)
-    return compiled, positions, envelope.cells, chosen
+    return compiled, slots, chosen
 
 
 def start_job(context: bpy.types.Context) -> SolveJob:
     """Compile and start solving."""
-    compiled, positions, cells, chosen = compile_scene(context)
+    compiled, slots, chosen = compile_scene(context)
     if compiled.has_errors:
         raise ValueError("the audit reports errors; fix them before solving")
     props = context.scene.lamdafunction
-    job = SolveJob(compiled, compiled.text, chosen, chosen.new_progress(), positions, cells, props.seed)
+    job = SolveJob(compiled, compiled.text, chosen, chosen.new_progress(), slots, props.seed, props.cell_size)
     props.solving = True
     props.status = f"Solving with {chosen.name}"
     job.start()
@@ -151,7 +156,7 @@ def finish_job(context: bpy.types.Context, job: SolveJob) -> None:
         props.report = ""
         return
     obj = results.ensure_assembly_object(scene)
-    results.write_result(obj, job.positions, job.cells, job.result, job.compiled.document["compile_hash"], job.seed)
+    results.write_result(obj, job.slots, job.result, job.compiled.document["compile_hash"], job.seed, job.cell_size)
     props.assembly_object = obj.name
     props.report = results.report_summary(job.result.report)
     violations = job.backend.validate(job.text, np.asarray(job.result.variant), np.asarray(job.result.state))
@@ -285,12 +290,12 @@ class LAMDAFUNCTION_OT_compile(bpy.types.Operator):
 
     def execute(self, context: bpy.types.Context) -> set[str]:
         try:
-            compiled, _, cells, chosen = compile_scene(context)
+            compiled, slots, chosen = compile_scene(context)
         except (ValueError, ImportError) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         props = context.scene.lamdafunction
-        props.status = f"Compiled {len(cells)} slots, {len(compiled.document['variants'])} variants with {chosen.name}"
+        props.status = f"Compiled {slots.count} slots, {len(compiled.document['variants'])} variants with {chosen.name}"
         if compiled.has_errors:
             self.report({"WARNING"}, "the audit reports errors")
         return {"FINISHED"}
@@ -370,7 +375,7 @@ class LAMDAFUNCTION_OT_cancel(bpy.types.Operator):
 
 
 class LAMDAFUNCTION_OT_materialise(bpy.types.Operator):
-    """Instance the library on the assembly with the Materialise node group."""
+    """Instance the library on the assembly with the Materialise node group (on a surface, optionally deformed to the cells)."""
 
     bl_idname = "lamdafunction.materialise"
     bl_label = "Materialise"
@@ -386,9 +391,16 @@ class LAMDAFUNCTION_OT_materialise(bpy.types.Operator):
         props = scene.lamdafunction
         obj = bpy.data.objects[props.assembly_object]
         instancer = nodes.ensure_instancer(scene, props.library)
-        tree = bpy.data.node_groups.get(nodes.MATERIALISE) or nodes.ensure_materialise_group()
+        tree = bpy.data.node_groups.get(nodes.MATERIALISE)
+        if tree is None or not nodes.has_input(tree, "Deform"):
+            # Missing, or built by an add-on version before Deform to cells existed.
+            tree = nodes.ensure_materialise_group()
         modifier = nodes.attach_group(obj, tree, "LamdaFunction Materialise")
         nodes.set_group_input(modifier, "Library", instancer)
+        # Only a surface assembly has corners to deform into; a box assembly stays rigid.
+        surface = "wfc_c0" in obj.data.attributes
+        nodes.set_group_input(modifier, "Deform", bool(props.deform_to_cells and surface))
+        nodes.set_group_input(modifier, "Cell Size", float(props.cell_size))
         return {"FINISHED"}
 
 
@@ -435,13 +447,38 @@ class LAMDAFUNCTION_OT_select_audit(bpy.types.Operator):
             self.report({"INFO"}, item.message)
         elif item.target_kind == "slot" and props.envelope is not None:
             depsgraph = context.evaluated_depsgraph_get()
-            _, positions = envelope_module.read_envelope(props.envelope, props.cell_size, depsgraph)
-            if 0 <= item.target_index < len(positions):
-                context.scene.cursor.location = positions[item.target_index]
+            positions = envelope_module.read_slots(props.envelope, props, depsgraph).positions
+            slot = int(item.target_name) if item.target_name.isdigit() else item.target_index
+            if 0 <= slot < len(positions):
+                context.scene.cursor.location = positions[slot]
+            self.report({"INFO"}, item.message)
+        elif item.target_kind.startswith("mesh_") and props.envelope is not None:
+            # Mesh targets index the envelope's evaluated mesh: put the cursor on the culprit.
+            surface = envelope_module.read_surface_mesh(props.envelope, context.evaluated_depsgraph_get())
+            point = _mesh_target(surface, item.target_kind, item.target_name, item.target_index)
+            if point is not None:
+                context.scene.cursor.location = point
             self.report({"INFO"}, item.message)
         else:
             self.report({"INFO"}, item.message)
         return {"FINISHED"}
+
+
+def _mesh_target(surface: envelope_module.SurfaceMesh, kind: str, name: str, index: int) -> tuple[float, float, float] | None:
+    """World position of a ``mesh_vertex``, ``mesh_edge`` (name, index = its two vertices) or ``mesh_face`` target."""
+    if not name.isdigit():
+        return None
+    first = int(name)
+    if kind == "mesh_vertex" and first < len(surface.vertices):
+        chosen = [first]
+    elif kind == "mesh_edge" and max(first, index) < len(surface.vertices) and index >= 0:
+        chosen = [first, index]
+    elif kind == "mesh_face" and first < len(surface.polygons):
+        chosen = surface.polygons[first]
+    else:
+        return None
+    point = surface.vertices[chosen].mean(axis=0)
+    return (float(point[0]), float(point[1]), float(point[2]))
 
 
 CLASSES = (
