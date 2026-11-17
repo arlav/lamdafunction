@@ -64,6 +64,13 @@ GUIDE_ITEMS = [
 ]
 
 UV_AXIS_ITEMS = [("0", "U", "Follow U"), ("1", "V", "Follow V")]
+GROUP_POLICY_ITEMS = [
+    ("DEFAULT", "As boundary", "Follow the Closed boundary setting below"),
+    ("FREE", "Free", "Anything may face outward here"),
+    ("CLOSED", "Closed by", "Faces here must carry this connector or be terminators"),
+]
+SHELL_GROUPS = ("top", "bottom", "rim")
+"""Boundary groups of a shell: the outer side, the inner side, and the sides along open mesh edges."""
 
 LEVEL_ICONS = {"error": "CANCEL", "warning": "ERROR", "info": "INFO"}
 
@@ -156,6 +163,12 @@ class SceneProps(bpy.types.PropertyGroup):
     max_observations: IntProperty(name="Max observations", default=0, min=0, description="0 solves to the end")
     closed: BoolProperty(name="Closed boundary", default=True, description="Exposed faces must carry the boundary connector or be terminators")
     closed_by: StringProperty(name="Boundary connector", default="0")
+    boundary_top: EnumProperty(name="Top", items=GROUP_POLICY_ITEMS, default="DEFAULT", description="Boundary policy for the outer side of the shell")
+    boundary_top_by: StringProperty(name="Top connector", default="0")
+    boundary_bottom: EnumProperty(name="Bottom", items=GROUP_POLICY_ITEMS, default="DEFAULT", description="Boundary policy for the inner side of the shell")
+    boundary_bottom_by: StringProperty(name="Bottom connector", default="0")
+    boundary_rim: EnumProperty(name="Rim", items=GROUP_POLICY_ITEMS, default="DEFAULT", description="Boundary policy for the sides along open mesh edges")
+    boundary_rim_by: StringProperty(name="Rim connector", default="0")
     compile_hash: StringProperty()
     report: StringProperty()
     status: StringProperty()

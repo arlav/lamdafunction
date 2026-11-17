@@ -70,6 +70,11 @@ class SolveSettings:
     ``closed_by`` is the boundary policy: ``None`` leaves exposed faces free;
     a connector name (such as ``"0"``) requires every exposed face to carry
     that connector or to be flagged as a terminator.
+
+    ``boundary_groups`` overrides that policy per group of exposed ports
+    (``top``, ``bottom``, ``rim`` on a shell; ``+X`` … ``-Z`` on a box): pairs
+    ``(group, connector or None)``, sorted by group, where ``None`` leaves the
+    group free. Groups not listed follow ``closed_by``.
     """
 
     seed: int = 1
@@ -78,3 +83,11 @@ class SolveSettings:
     backtrack_budget: int = 100
     max_observations: int = 0
     closed_by: str | None = None
+    boundary_groups: tuple[tuple[str, str | None], ...] = ()
+
+    def policy(self, group: str) -> str | None:
+        """The connector that closes ``group``, or ``None`` where it is free."""
+        for name, connector in self.boundary_groups:
+            if name == group:
+                return connector
+        return self.closed_by

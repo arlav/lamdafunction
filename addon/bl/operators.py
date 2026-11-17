@@ -29,7 +29,7 @@ from . import envelope as envelope_module
 from . import library as library_module
 from . import nodes, overlay, results
 from .envelope import Slots
-from .properties import SceneProps
+from .properties import SHELL_GROUPS, SceneProps
 
 ASSEMBLY_TEXT = "lamdafunction.assembly.json"
 
@@ -95,7 +95,26 @@ def settings_from_props(props: SceneProps) -> SolveSettings:
         backtrack_budget=props.backtrack_budget,
         max_observations=props.max_observations,
         closed_by=props.closed_by.strip() if props.closed and props.closed_by.strip() else None,
+        boundary_groups=boundary_groups(props),
     )
+
+
+def boundary_groups(props: SceneProps) -> tuple[tuple[str, str | None], ...]:
+    """Per-group boundary overrides of a shell (top, bottom, rim), sorted by group; none in points mode.
+
+    "Closed by" with an empty connector counts as free.
+    """
+    if props.envelope_mode != "SURFACE":
+        return ()
+    out: list[tuple[str, str | None]] = []
+    for group in SHELL_GROUPS:
+        policy = getattr(props, f"boundary_{group}")
+        if policy == "FREE":
+            out.append((group, None))
+        elif policy == "CLOSED":
+            connector = getattr(props, f"boundary_{group}_by").strip()
+            out.append((group, connector or None))
+    return tuple(sorted(out))
 
 
 def fill_audit(props: SceneProps, compiled: Compiled) -> None:

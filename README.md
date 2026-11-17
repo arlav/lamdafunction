@@ -80,6 +80,8 @@ Phase 2 wraps a kit onto any quad mesh instead of a box. Each quad becomes a cel
 
 <sub>`examples/surface-pipes.blend`: the same six modules on a cube with Subdivision Surface and Cast modifiers (384 cells, seed 2). Rendered by `scripts/render_surface.py`. Not in a release yet.</sub>
 
+The full walkthrough is [docs/surface-tutorial.md](docs/surface-tutorial.md) (also as a [PDF](docs/surface-tutorial.pdf)): the quad sphere above, a two-layer freeform, and a rib kit that follows the arches of a barrel vault.
+
 ## Install
 
 You need **Blender 5.2 LTS** or newer.
@@ -200,7 +202,7 @@ CI (`.github/workflows/ci.yml`) builds wheels for Windows x64, Linux x64, macOS 
 | --- | --- |
 | 0, spikes | Done: collection ordering, face frames and twists, the wheel inside Blender, bitset benchmark, attribute write speed |
 | 1, MVP | Built: single-cell modules, connectors and rules, rotational freedom, box and mesh envelopes, boundaries, audit, Materialise and Inspect |
-| 2, surfaces | In progress: shells that follow a quad mesh, a direction field with a curvature, world-axis or UV guide, rigid placement and Deform to cells; next several layers, per-group boundaries and painted weights |
+| 2, surfaces | In progress: shells that follow a quad mesh, a direction field with a curvature, world-axis or UV guide, rigid placement and Deform to cells, several layers, a boundary per side, painted weights and thickness, and the surface tutorial; the phase 2 gate is pending |
 | 3, parity | Multi-cell modules, connector twists in the UI, weights as attributes, growth mode with supply caps, partial re-solve, seed browser |
 | 4 and research | Global constraints (connectivity, support, counts, symmetry), solving in blocks, learning rules from examples, SpaceTope layouts as envelopes, IFC export through Bonsai |
 

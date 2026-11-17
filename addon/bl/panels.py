@@ -168,6 +168,14 @@ class LAMDAFUNCTION_PT_envelope(LamdaPanel, bpy.types.Panel):
         sub = row.row()
         sub.active = props.closed
         sub.prop(props, "closed_by", text="")
+        if props.envelope_mode == "SURFACE":
+            box = layout.box()
+            box.label(text="Boundary per side", icon="MOD_SOLIDIFY")
+            for group in ("top", "bottom", "rim"):
+                row = box.row(align=True)
+                row.prop(props, f"boundary_{group}")
+                if getattr(props, f"boundary_{group}") == "CLOSED":
+                    row.prop(props, f"boundary_{group}_by", text="")
 
 
 class LAMDAFUNCTION_PT_solve(LamdaPanel, bpy.types.Panel):

@@ -9,9 +9,10 @@ Build order step 11 (``docs/PLAN.md``, "Rule compiler"):
   its tags, taken in sorted key order so both languages multiply alike.
 - A module's weight is split across its variants, so a module with 24
   rotations is not 24 times likelier than a fixed one.
-- With a closed boundary, an exposed world face ``d`` admits the variants
-  whose face ``d`` carries the boundary connector or is a terminator; that
-  set is one boundary class per world face.
+- An exposed port ``d`` whose group is closed by a connector admits the
+  variants whose face ``d`` carries that connector or is a terminator; each
+  (connector, variant set) is one boundary class. The group's policy is
+  ``SolveSettings.policy(group)``: a per-group override, else ``closed_by``.
 """
 
 from __future__ import annotations
@@ -100,15 +101,21 @@ def build_domains(kit: Kit, envelope: CellEnvelope, settings: SolveSettings, exp
 
     boundary_classes: dict[tuple[str, tuple[int, ...]], int] = {}
     boundary: list[tuple[int, int, int]] = []
-    if settings.closed_by is not None:
-        name = settings.closed_by
-        per_face = [
-            tuple(v.index for v in expansion.variants if v.faces[d].name == name or v.terminator[d])
-            for d in range(6)
-        ]
-        for slot, port in graph.exposed:
-            key = (name, per_face[port])
-            boundary.append((slot, port, boundary_classes.setdefault(key, len(boundary_classes))))
+    per_face: dict[str, list[tuple[int, ...]]] = {}
+    groups = [x.group for x in envelope.exposed]
+    if len(groups) != len(graph.exposed):
+        raise ValueError("the slot graph and the cell envelope list different exposed ports")
+    for (slot, port), group in zip(graph.exposed, groups):
+        name = settings.policy(group)
+        if name is None:
+            continue
+        if name not in per_face:
+            per_face[name] = [
+                tuple(v.index for v in expansion.variants if v.faces[d].name == name or v.terminator[d])
+                for d in range(6)
+            ]
+        key = (name, per_face[name][port])
+        boundary.append((slot, port, boundary_classes.setdefault(key, len(boundary_classes))))
 
     return Domains(
         domain_classes=tuple(classes),

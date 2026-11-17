@@ -12,7 +12,10 @@ Two modes (``SceneProps.envelope_mode``):
 In points mode ``wfc_cell`` gives grid coordinates; without it they are
 derived from position and the scene's cell size. ``wfc_w:*``,
 ``wfc_priority`` and ``wfc_fix`` are read when present
-(``.claude/rules/blender-addon.md``, "Attribute contract").
+(``.claude/rules/blender-addon.md``, "Attribute contract"): on points in
+points mode, on faces in surface mode (every layer of a face takes the face's
+value, so where things go can be painted on the surface). In surface mode a
+point-domain ``wfc_thickness`` scales the thickness per vertex.
 """
 
 from __future__ import annotations
@@ -75,27 +78,34 @@ def read_envelope(obj: bpy.types.Object, cell_size: float, depsgraph: bpy.types.
         cells_array = np.rint(local / cell_size).astype(np.int64)
     cells = [(int(x), int(y), int(z)) for x, y, z in cells_array]
 
-    weights: dict[str, list[float]] = {}
-    priority: list[int] | None = None
-    fixed: list[int] | None = None
-    for attr in mesh.attributes:
-        if attr.domain != "POINT":
-            continue
-        if attr.name.startswith("wfc_w:") and attr.data_type == "FLOAT":
-            values = np.empty(n, dtype=np.float32)
-            attr.data.foreach_get("value", values)
-            weights[attr.name[len("wfc_w:"):]] = [float(v) for v in values]
-        elif attr.name == "wfc_priority" and attr.data_type == "INT":
-            values = np.empty(n, dtype=np.int32)
-            attr.data.foreach_get("value", values)
-            priority = [int(v) for v in values]
-        elif attr.name == "wfc_fix" and attr.data_type == "INT":
-            values = np.empty(n, dtype=np.int32)
-            attr.data.foreach_get("value", values)
-            fixed = [int(v) for v in values]
-    envelope = Envelope(cells, weights, priority, fixed)
+    inputs = read_inputs(mesh, "POINT", n)
+    envelope = Envelope(cells, inputs.get("weights", {}), inputs.get("priority"), inputs.get("fixed"))
     envelope.check()
     return envelope, positions
+
+
+def read_inputs(mesh: bpy.types.Mesh, domain: str, count: int) -> dict[str, Any]:
+    """The slot inputs painted on one domain: ``weights`` (``wfc_w:*``), ``priority``, ``fixed``.
+
+    Only attributes of the expected type count (float weights, int priority
+    and fix); keys are left out when the attribute is absent.
+    """
+    weights: dict[str, list[float]] = {}
+    out: dict[str, Any] = {}
+    for attr in mesh.attributes:
+        if attr.domain != domain:
+            continue
+        if attr.name.startswith("wfc_w:") and attr.data_type == "FLOAT":
+            values = np.empty(count, dtype=np.float32)
+            attr.data.foreach_get("value", values)
+            weights[attr.name[len("wfc_w:"):]] = [float(v) for v in values]
+        elif attr.name in ("wfc_priority", "wfc_fix") and attr.data_type == "INT":
+            values = np.empty(count, dtype=np.int32)
+            attr.data.foreach_get("value", values)
+            out["priority" if attr.name == "wfc_priority" else "fixed"] = [int(v) for v in values]
+    if weights:
+        out["weights"] = weights
+    return out
 
 
 def box_envelope(scene: bpy.types.Scene, size: tuple[int, int, int], cell_size: float, name: str = "LamdaFunction Envelope") -> bpy.types.Object:
@@ -116,11 +126,17 @@ def box_envelope(scene: bpy.types.Scene, size: tuple[int, int, int], cell_size: 
 
 @dataclass
 class SurfaceMesh:
-    """The evaluated mesh in world space: vertices, polygons in loop order, and UVs per polygon corner."""
+    """The evaluated mesh in world space: vertices, polygons in loop order, UVs per polygon corner, and painted inputs.
+
+    ``face_inputs`` are the face-domain ``wfc_w:*``, ``wfc_priority`` and
+    ``wfc_fix``; ``thickness_scale`` is the point-domain ``wfc_thickness``.
+    """
 
     vertices: np.ndarray
     polygons: list[list[int]]
     uv: list[list[tuple[float, float]]] | None
+    face_inputs: dict[str, Any] | None = None
+    thickness_scale: np.ndarray | None = None
 
 
 def read_surface_mesh(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> SurfaceMesh:
@@ -156,7 +172,13 @@ def read_surface_mesh(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> 
         layer.data.foreach_get("uv", flat)
         pairs = flat.reshape(-1, 2).astype(np.float64)
         uv = [[(float(x), float(y)) for x, y in pairs[a : a + t]] for a, t in zip(starts, totals)]
-    return SurfaceMesh(vertices, polygons, uv)
+    thickness = None
+    attr = mesh.attributes.get("wfc_thickness")
+    if attr is not None and attr.domain == "POINT" and attr.data_type == "FLOAT":
+        values = np.empty(n, dtype=np.float32)
+        attr.data.foreach_get("value", values)
+        thickness = values.astype(np.float64)
+    return SurfaceMesh(vertices, polygons, uv, read_inputs(mesh, "FACE", count) or None, thickness)
 
 
 def field_settings(props: Any, surface: SurfaceMesh) -> FieldSettings:
@@ -186,6 +208,8 @@ def read_surface(obj: bpy.types.Object, props: Any, depsgraph: bpy.types.Depsgra
         layers=props.surface_layers,
         offset=props.surface_offset,
         field=field_settings(props, surface),
+        face_inputs=surface.face_inputs,
+        thickness_scale=surface.thickness_scale,
     )
     return Slots(cells, cells.frames[:, 0].copy())
 

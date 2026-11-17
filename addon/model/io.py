@@ -111,8 +111,8 @@ def envelope_from_dict(data: dict[str, Any]) -> Envelope:
 
 
 def settings_to_dict(settings: SolveSettings) -> dict[str, Any]:
-    """Solve settings as JSON data."""
-    return {
+    """Solve settings as JSON data; ``boundary_groups`` only when set, so older compile hashes stay the same."""
+    data: dict[str, Any] = {
         "seed": settings.seed,
         "attempts": settings.attempts,
         "threads": settings.threads,
@@ -120,6 +120,9 @@ def settings_to_dict(settings: SolveSettings) -> dict[str, Any]:
         "max_observations": settings.max_observations,
         "closed_by": settings.closed_by,
     }
+    if settings.boundary_groups:
+        data["boundary_groups"] = [[group, connector] for group, connector in settings.boundary_groups]
+    return data
 
 
 def settings_from_dict(data: dict[str, Any]) -> SolveSettings:
@@ -131,4 +134,7 @@ def settings_from_dict(data: dict[str, Any]) -> SolveSettings:
         backtrack_budget=int(data.get("backtrack_budget", 100)),
         max_observations=int(data.get("max_observations", 0)),
         closed_by=None if data.get("closed_by") is None else str(data["closed_by"]),
+        boundary_groups=tuple(
+            sorted((str(g), None if c is None else str(c)) for g, c in data.get("boundary_groups", []))
+        ),
     )

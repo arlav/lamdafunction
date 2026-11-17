@@ -165,8 +165,10 @@ jobs:
           ls addon/wheels
           python scripts/build_extension.py
           ls -la dist
-      - name: Tutorial PDF
-        run: python scripts/md2pdf.py docs/pipes-tutorial.md dist/pipes-tutorial.pdf
+      - name: Tutorial PDFs
+        run: |
+          python scripts/md2pdf.py docs/pipes-tutorial.md dist/pipes-tutorial.pdf
+          python scripts/md2pdf.py docs/surface-tutorial.md dist/surface-tutorial.pdf
       - uses: actions/upload-artifact@v4
         with:
           name: extension-zips
@@ -182,7 +184,7 @@ jobs:
             cat > dist/release-notes.md <<NOTES
           LamdaFunction ${GITHUB_REF_NAME} for Blender 5.2 LTS or newer.
 
-          Download the zip for your platform and install it with Edit → Preferences → Get Extensions → Install from Disk. Every zip contains the native solver for its platform and the Python fallback. The tutorial PDF and the pipes example file are attached; the tutorial's first section is the install procedure.
+          Download the zip for your platform and install it with Edit → Preferences → Get Extensions → Install from Disk. Every zip contains the native solver for its platform and the Python fallback. The tutorial PDFs and the pipes example file are attached; the pipes tutorial's first section is the install procedure.
           NOTES
           fi
       - name: GitHub release
@@ -192,6 +194,7 @@ jobs:
           files: |
             dist/*.zip
             dist/pipes-tutorial.pdf
+            dist/surface-tutorial.pdf
             examples/pipes.blend
           generate_release_notes: true
           body_path: dist/release-notes.md

@@ -242,8 +242,8 @@ def test_folded_cells_are_errors() -> None:
     """A bow-tie quad (corners out of order) is inside out at two corners; a sphere's thin shell is not.
 
     The check reads the trilinear Jacobian at the eight corners. A shell grown
-    inwards past a sphere's centre is pinched through a point, not inverted,
-    and passes it; the thickness control in S7 will bound that case.
+    inwards past a sphere's centre is pinched through a point, not inverted:
+    its corners pass, and :func:`test_pinched_cells_are_errors` covers it.
     """
     mesh = quad_sphere(2)
     polygons = [tuple(int(v) for v in f) for f in mesh.faces]
@@ -256,6 +256,74 @@ def test_folded_cells_are_errors() -> None:
     errors = [n for n in bowtie.notes if "folded" in n.message]
     assert [n.target for n in errors] == [("slot", 0)]
     assert compile_assembly(tube_kit(), bowtie, SettingsFree).has_errors
+
+
+def test_pinched_cells_are_errors() -> None:
+    """A shell grown inward past a sphere's centre keeps positive corner Jacobians but is pinched inside.
+
+    The inner face comes out mirrored through the centre, so the cell is two
+    pyramids tip to tip: the corners see no fold, the middle of the cell does.
+    """
+    mesh = quad_sphere(2)
+    radius = float(np.sqrt((mesh.vertices**2).sum(axis=1)).max())
+    polygons = [tuple(int(v) for v in f) for f in mesh.faces]
+    pinched = build_shell(mesh.vertices, polygons, thickness=1.5 * radius, offset="inward")
+    assert (corner_jacobians(pinched.corners) > 0.0).all()
+    errors = [n for n in pinched.notes if n.level == "error"]
+    assert errors and all("pinched" in n.message for n in errors if n.target[0] == "slot"), errors
+    assert compile_assembly(tube_kit(), pinched, SettingsFree).has_errors
+    # Half the radius is fine: thick, but not past the centre.
+    thick = build_shell(mesh.vertices, polygons, thickness=0.5 * radius, offset="inward")
+    assert not [n for n in thick.notes if n.level == "error"]
+
+
+def test_thickness_scale_per_vertex() -> None:
+    """A per-vertex factor scales the thickness and the offset there; neighbours still share corners."""
+    vertices, polygons = flat_grid(2, 1)  # vertices 0..2 on y = 0, 3..5 on y = 1
+    scale = [1.0, 2.0, 1.0, 1.0, 0.5, 1.0]
+    shell = build_shell(vertices, polygons, thickness=2.0, layers=2, offset="centred", thickness_scale=scale)
+    top = {tuple(c[:2]): c[2] for c in shell.corners[2:, 4:].reshape(-1, 3)}  # upper layer's top corners
+    bottom = {tuple(c[:2]): c[2] for c in shell.corners[:2, :4].reshape(-1, 3)}
+    assert top[(1.0, 0.0)] == 2.0 and bottom[(1.0, 0.0)] == -2.0
+    assert top[(1.0, 1.0)] == 0.5 and bottom[(1.0, 1.0)] == -0.5
+    assert top[(0.0, 0.0)] == 1.0 and bottom[(2.0, 1.0)] == -1.0
+    # The two cells of a layer share their common side's corners exactly.
+    assert np.array_equal(shell.corners[0, [1, 3, 5, 7]], shell.corners[1, [0, 2, 4, 6]])
+    flat = build_shell(vertices, polygons, thickness_scale=[1, 1, 1, 1, 0.0, 1])
+    assert any("folded" in n.message for n in flat.notes)
+    with pytest.raises(ValueError, match="entries"):
+        build_shell(vertices, polygons, thickness_scale=[1.0])
+
+
+def test_boundary_policy_per_group() -> None:
+    """Two layers on a quad sphere: "0" closes the top, "t" the bottom, so every inner cell has a pipe end inward.
+
+    On an open grid the rim can be left free while top and bottom stay closed.
+    """
+    mesh = quad_sphere(3)
+    polygons = [tuple(int(v) for v in f) for f in mesh.faces]
+    shell = build_shell(mesh.vertices, polygons, thickness=0.4, layers=2)
+    settings = SolveSettings(seed=2, attempts=8, closed_by="0", boundary_groups=(("bottom", "t"),))
+    assert settings.policy("bottom") == "t" and settings.policy("top") == "0" and settings.policy("rim") == "0"
+    result = compile_assembly(tube_kit(), shell, settings)
+    assert not result.has_errors, [i.message for i in result.audit]
+    assembly = load_assembly(result.text)
+    outcome = solve(assembly)
+    assert outcome.report["outcome"] == "solved"
+    assert validate(assembly, outcome.variant, outcome.state) == []
+    m = len(polygons)
+    variants = result.expansion.variants
+    assert all(variants[outcome.variant[c]].faces[5].name == "t" for c in range(m))  # inner layer, -Z
+    assert all(variants[outcome.variant[c]].faces[4].name == "0" for c in range(m, 2 * m))  # outer layer, +Z
+    # The policy is part of the compile hash.
+    plain = compile_assembly(tube_kit(), shell, SolveSettings(seed=2, attempts=8, closed_by="0"))
+    assert plain.document["compile_hash"] != result.document["compile_hash"]
+
+    vertices, grid = flat_grid(3, 3)
+    open_rim = SolveSettings(seed=1, attempts=4, closed_by="0", boundary_groups=(("rim", None),))
+    doc = compile_assembly(tube_kit(), build_shell(vertices, grid), open_rim).document
+    closed = {(b["slot"], b["port"]) for b in doc["boundary"]}
+    assert closed == {(c, p) for c in range(9) for p in (4, 5)}
 
 
 def test_offsets_place_the_layers() -> None:

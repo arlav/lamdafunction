@@ -25,8 +25,8 @@ both sides.
 
 **Exposed ports.** ``(cell, port, group)``: a port with no neighbour. The
 group (``top``, ``bottom``, ``rim`` on a shell; a world face name on a box)
-will choose the boundary policy per group (S7); until then one policy applies
-to every group.
+chooses the boundary policy: ``SolveSettings.boundary_groups`` overrides the
+default policy per group.
 
 **Notes.** What the builder wants the author to know (skipped faces,
 non-manifold edges, inverted cells). The compiler copies them into the audit.
@@ -205,15 +205,58 @@ def corner_jacobians(corners: np.ndarray) -> np.ndarray:
     return out
 
 
+PARALLEL_EDGES: tuple[tuple[tuple[int, int], ...], ...] = (
+    ((0, 1), (2, 3), (4, 5), (6, 7)),
+    ((0, 2), (1, 3), (4, 6), (5, 7)),
+    ((0, 4), (1, 5), (2, 6), (3, 7)),
+)
+"""Per axis, the cell's four edges along it, each from its low corner to its high corner."""
+
+
+def reversed_edges(corners: np.ndarray) -> np.ndarray:
+    """Per cell, whether two parallel edges on one face point against each other (dot product at or below zero).
+
+    In a sound cell the edges along an axis point roughly the same way. Where
+    two on a common face point against each other, the edge blended between
+    them passes through (or next to) zero inside the cell: the cell is pinched
+    there. Only edges sharing a face are compared: on a shell over a cube the
+    vertical edges at opposite corners splay apart by more than 90 degrees,
+    which is sound.
+    """
+    out = np.zeros(len(corners), dtype=bool)
+    for edges in PARALLEL_EDGES:
+        vectors = [corners[:, high] - corners[:, low] for low, high in edges]
+        for i in range(4):
+            for j in range(i + 1, 4):
+                if bin(edges[i][0] ^ edges[j][0]).count("1") != 1:
+                    continue  # diagonally opposite: no common face
+                a, b = vectors[i], vectors[j]
+                out |= (a[:, 0] * b[:, 0] + a[:, 1] * b[:, 1] + a[:, 2] * b[:, 2]) <= 0.0
+    return out
+
+
 def inverted_cells(cells: CellEnvelope, limit: int = 20) -> list[Note]:
-    """An error note per cell whose trilinear map folds (at most ``limit`` notes, then a count)."""
-    bad = np.nonzero((corner_jacobians(cells.corners) <= 0.0).any(axis=1))[0]
-    notes = [
-        Note("error", f"cell {int(c)} ({_source_text(cells.sources[int(c)])}) is folded or inside out; modules would invert in it", ("slot", int(c)))
-        for c in bad[:limit]
-    ]
+    """An error note per cell whose trilinear map folds (at most ``limit`` notes, then a count).
+
+    The corners catch a cell turned inside out. A cell pinched through a point
+    (a shell grown inward past the centre of curvature, so the inner face comes
+    out mirrored on the far side) keeps positive corners while its middle
+    collapses; :func:`reversed_edges` catches that, because its inner edges
+    point against its outer ones.
+    """
+    at_corners = (corner_jacobians(cells.corners) <= 0.0).any(axis=1)
+    inside = reversed_edges(cells.corners)
+    notes: list[Note] = []
+    bad = np.nonzero(at_corners | inside)[0]
+    for c in bad[:limit]:
+        where = f"cell {int(c)} ({_source_text(cells.sources[int(c)])})"
+        if at_corners[c]:
+            text = f"{where} is folded or inside out; modules would invert in it"
+        else:
+            text = f"{where} is pinched inside; the shell is likely thicker than the surface's radius of curvature there"
+        notes.append(Note("error", text, ("slot", int(c))))
     if len(bad) > limit:
-        notes.append(Note("error", f"{len(bad)} cells are folded or inside out"))
+        notes.append(Note("error", f"{len(bad)} cells are folded, inside out or pinched"))
     return notes
 
 

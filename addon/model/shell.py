@@ -16,9 +16,10 @@ image, which no rotation can express. Edges shared by three or more faces
 are left unconnected and reported as errors.
 
 **Corners.** Layer boundary ``b`` (``0..layers``) at vertex ``v`` is
-``v + n_v × (base + thickness · b / layers)``, where ``n_v`` is the
-area-weighted smooth vertex normal and ``base`` is ``0`` (outward),
-``-thickness`` (inward) or ``-thickness / 2`` (centred). Neighbouring cells
+``v + n_v × s_v × (base + thickness · b / layers)``, where ``n_v`` is the
+area-weighted smooth vertex normal, ``s_v`` the vertex's thickness scale
+(``wfc_thickness`` in Blender; 1 when not given) and ``base`` is ``0``
+(outward), ``-thickness`` (inward) or ``-thickness / 2`` (centred). Neighbouring cells
 compute their shared corners from the same vertex and normal, so they share
 them exactly.
 
@@ -223,6 +224,7 @@ def build_shell(
     k: Sequence[int] | None = None,
     field: FieldSettings | None = None,
     face_inputs: dict[str, Any] | None = None,
+    thickness_scale: Sequence[float] | np.ndarray | None = None,
 ) -> CellEnvelope:
     """The cell envelope of a shell over a polygon mesh.
 
@@ -237,6 +239,9 @@ def build_shell(
     ``face_inputs`` may hold ``weights`` (name to one value per polygon),
     ``priority`` and ``fixed`` (one per polygon); every layer of a face takes
     the face's value. Sources are ``("face", polygon index, layer)``.
+    ``thickness_scale`` gives one factor per *vertex* that multiplies the
+    thickness (and the offset) there; a factor at or below zero makes
+    degenerate or inverted cells, which the fold check reports.
     """
     if layers < 1:
         raise ValueError("a shell needs at least one layer")
@@ -283,7 +288,15 @@ def build_shell(
     area_normal = np.cross(corners_q[:, 2] - corners_q[:, 0], corners_q[:, 3] - corners_q[:, 1]) * 0.5
     normals = vertex_normals(mesh, area_normal)
     base = {"outward": 0.0, "inward": -thickness, "centred": -thickness / 2.0}[offset]
-    boundary = [vertices + normals * (base + thickness * b / layers) for b in range(layers + 1)]
+    if thickness_scale is None:
+        scale = np.ones(len(vertices))
+    else:
+        scale = np.asarray(thickness_scale, dtype=np.float64).reshape(-1)
+        if len(scale) != len(vertices):
+            raise ValueError(f"thickness_scale has {len(scale)} entries, the mesh has {len(vertices)} vertices")
+        if not np.isfinite(scale).all():
+            raise ValueError("thickness_scale must be finite")
+    boundary = [vertices + normals * (scale * (base + thickness * b / layers))[:, None] for b in range(layers + 1)]
     ring = turned[:, [0, 1, 3, 2]]  # corner x + 2y: (0,0) c'0, (1,0) c'1, (0,1) c'3, (1,1) c'2
     corners = np.concatenate(
         [np.concatenate([boundary[layer][ring], boundary[layer + 1][ring]], axis=1) for layer in range(layers)], axis=0

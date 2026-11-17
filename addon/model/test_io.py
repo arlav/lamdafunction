@@ -47,6 +47,9 @@ def test_envelope_and_settings_round_trip() -> None:
     assert envelope_from_dict(json.loads(json.dumps(envelope_to_dict(envelope)))) == envelope
     settings = SolveSettings(seed=7, attempts=2, closed_by="0")
     assert settings_from_dict(settings_to_dict(settings)) == settings
+    assert "boundary_groups" not in settings_to_dict(settings)  # absent when unused: phase 1 hashes stay
+    grouped = SolveSettings(closed_by="0", boundary_groups=(("bottom", "t"), ("rim", None)))
+    assert settings_from_dict(json.loads(json.dumps(settings_to_dict(grouped)))) == grouped
 
 
 def test_rule_parsing() -> None:
