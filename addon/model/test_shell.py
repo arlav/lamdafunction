@@ -477,10 +477,10 @@ def test_field_does_not_comb_across_a_cut() -> None:
 
 
 def test_field_mode_seams_are_compared_with_mesh_mode() -> None:
-    """The experimental mode warns when it adds seams the default would not: 19 against 0 on a saddle."""
+    """The experimental mode warns when it adds seams the default would not: 15 against 0 on a saddle."""
     mesh = saddle(8)
     polygons = [tuple(int(v) for v in f) for f in mesh.faces]
     shell = build_shell(mesh.vertices, polygons, thickness=0.2, field=FieldSettings(follow="field"))
-    assert any("gives 19 seams where 'mesh' gives 0" in n.message for n in shell.notes)
+    assert any("gives 15 seams where 'mesh' gives 0" in n.message for n in shell.notes)
     plain = build_shell(mesh.vertices, polygons, thickness=0.2, field=FieldSettings())
     assert not any("seams" in n.message for n in plain.notes)

@@ -56,8 +56,8 @@ DISCRETE = (
     "wfc_layer",
 )
 
-HASH_SPHERE_SEED_1 = "0c06b09ae345063f"  # 5.0.1, macOS arm64; 4.3.2 and both backends agree
-HASH_FREEFORM_SEED_3 = "16ec231f389deaed"  # ditto
+HASH_SPHERE_SEED_1 = "bf7101656c4e762a"  # 5.2.2, macOS arm64; re-pinned 2026-11-25 with field.SEED_BAND
+HASH_FREEFORM_SEED_3 = "999d4af93b48c8c2"  # ditto
 
 
 def discrete_hash(assembly: bpy.types.Object) -> str:

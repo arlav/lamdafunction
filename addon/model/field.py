@@ -48,6 +48,18 @@ SIDE_PORT: tuple[int, ...] = (3, 0, 2, 1)
 TIE: float = 1e-9
 """Two candidate choices closer than this (relative) count as a tie; the lower ``k`` wins."""
 
+SEED_BAND: float = 1.0 / 64.0
+"""Faces within this fraction of a piece's highest confidence all count as its most confident.
+
+On a symmetric mesh (a quad sphere, a subdivided box) many faces have the same confidence up
+to rounding, about 1e-9 apart, so "the most confident face" would be picked by the last bits
+of a float, and those differ between processors (x64 and arm64 round a modifier's output
+differently). The combing starts from that face, so ``k`` would differ too. Taking the
+lowest-numbered face inside the band makes the choice depend on the mesh, not on rounding."""
+
+VOTE_TIE: float = 1e-6
+"""A piece's family vote smaller than this fraction of its total weight counts as a tie (no turn)."""
+
 
 FOLLOW: tuple[str, ...] = ("mesh", "field")
 """``mesh`` (default): comb along the edge flow. ``field``: experimental, snap each face to the smoothed curvature line."""
@@ -361,16 +373,27 @@ def _along(k: int, z: tuple[float, float]) -> float:
     return ar * z[0] + ai * z[1]
 
 
+def _seeds(confidence: np.ndarray, piece: np.ndarray) -> list[int]:
+    """The face each connected piece is combed from: its lowest-numbered face within
+    :data:`SEED_BAND` of the piece's highest confidence. Pieces come in :func:`pieces` order."""
+    count = int(piece.max()) + 1 if len(piece) else 0
+    top = np.zeros(count)
+    np.maximum.at(top, piece, confidence)
+    seeds = [-1] * count
+    for f in range(len(piece)):
+        p = int(piece[f])
+        if seeds[p] < 0 and float(confidence[f]) >= (1.0 - SEED_BAND) * float(top[p]):
+            seeds[p] = f
+    return seeds
+
+
 def _comb(line: C, transport: list[C], topo: Topology, confidence: np.ndarray) -> np.ndarray:
-    """Family from the line field, sign by breadth-first combing; seed per component is its most confident face."""
+    """Family from the line field, sign by breadth-first combing; each piece starts from :func:`_seeds`' face."""
     m = len(confidence)
     # Family 0 (k = 0 or 2) when the line is closer to u than to v: Re(line) >= 0 in 2-theta space.
     family = np.where(line.re >= -TIE, 0, 1)
     k = np.full(m, -1, dtype=np.int64)
-    order = sorted(range(m), key=lambda f: (-float(confidence[f]), f))
-    for seed in order:
-        if k[seed] >= 0:
-            continue
+    for seed in _seeds(confidence, pieces(topo)):
         k[seed] = family[seed]
         queue = deque([seed])
         while queue:
@@ -395,7 +418,7 @@ def _comb(line: C, transport: list[C], topo: Topology, confidence: np.ndarray) -
 def _comb_mesh(line_target: C, topo: Topology, confidence: np.ndarray) -> np.ndarray:
     """Comb along the edge flow, integers only; then one family per connected piece.
 
-    Breadth-first from each piece's most confident face, a neighbour takes the ``k`` that makes
+    Breadth-first from each piece's seed face (:func:`_seeds`), a neighbour takes the ``k`` that makes
     the edge to its parent regular (:func:`seam_turns` 0): ``k_g = k_f - s + t + 2``. Turning a
     whole piece by one quarter keeps every seam, so the piece then takes the turn whose +X
     family agrees best with ``line_target``, summed in face order.
@@ -403,12 +426,9 @@ def _comb_mesh(line_target: C, topo: Topology, confidence: np.ndarray) -> np.nda
     m = len(confidence)
     k = np.full(m, -1, dtype=np.int64)
     piece = np.full(m, -1, dtype=np.int64)
-    order = sorted(range(m), key=lambda f: (-float(confidence[f]), f))
-    pieces = 0
-    for seed in order:
-        if k[seed] >= 0:
-            continue
-        k[seed], piece[seed] = 0, pieces
+    count = 0
+    for seed in _seeds(confidence, pieces(topo)):
+        k[seed], piece[seed] = 0, count
         queue = deque([seed])
         while queue:
             f = queue.popleft()
@@ -418,16 +438,19 @@ def _comb_mesh(line_target: C, topo: Topology, confidence: np.ndarray) -> np.nda
                     continue
                 t = int(topo.neighbour_side[f, s])
                 k[g] = (int(k[f]) - s + t + 2) % 4
-                piece[g] = pieces
+                piece[g] = count
                 queue.append(g)
-        pieces += 1
+        count += 1
     # Family vote: +X as a line is +1 (even k) or -1 (odd k) in the face's 2-theta space, so
-    # agreement is Re(line_target) times that sign. Sum per piece in face order.
+    # agreement is Re(line_target) times that sign. Sum per piece in face order. A vote that is
+    # tiny beside the piece's total weight is rounding, not a preference: it counts as a tie.
     sign = np.where(k % 2 == 0, 1.0, -1.0)
-    vote = np.zeros(pieces)
+    vote = np.zeros(count)
+    weight = np.zeros(count)
     for f in range(m):
         vote[piece[f]] += float(line_target.re[f]) * float(sign[f])
-    turn = np.where(vote < -TIE, 1, 0)
+        weight[piece[f]] += abs(float(line_target.re[f]))
+    turn = np.where(vote < -(TIE + VOTE_TIE * weight), 1, 0)
     return (k + turn[piece]) % 4
 
 

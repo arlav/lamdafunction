@@ -22,14 +22,14 @@ from . import sample_meshes as sm
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "field"
 
 PINNED = {
-    ("quad_sphere_L3", "mesh"): "be9f6c7786f967b6",
-    ("quad_sphere_L3", "field"): "8a50f86c3fe3728a",
-    ("bumpy_sphere", "mesh"): "41739994a420a0d6",
-    ("bumpy_sphere", "field"): "e858d11d28fa16af",
+    ("quad_sphere_L3", "mesh"): "5a450870a0972ad5",
+    ("quad_sphere_L3", "field"): "e393fb0d2c39c924",
+    ("bumpy_sphere", "mesh"): "c2e648e9b53c13fe",
+    ("bumpy_sphere", "field"): "1bf58d3d4c393783",
     ("vault", "mesh"): "fd9243e1ba57263e",
     ("vault_sheared", "mesh"): "fd9243e1ba57263e",
     ("saddle", "mesh"): "ff31eed352a6dc52",
-    ("saddle", "field"): "fcebc2d58620c587",
+    ("saddle", "field"): "2065157cb92e4294",
 }
 
 
@@ -37,8 +37,8 @@ GUIDE = (0.0, -0.6, -0.8)
 """A guide that is not along any mesh direction; on the bumpy sphere it turns the piece by a half."""
 
 PINNED_GUIDED = {
-    ("bumpy_sphere", "mesh"): "9b388d14ed8e4491",
-    ("saddle", "field"): "d6be095de0b1c24d",
+    ("bumpy_sphere", "mesh"): "fbc84681f943b89a",
+    ("saddle", "field"): "8ffc6632747b0802",
     ("vault", "mesh"): "fd9243e1ba57263e",
 }
 
@@ -56,6 +56,21 @@ def k_hash(k: np.ndarray) -> str:
 def test_pinned_k(name: str, follow: str) -> None:
     """Same frozen mesh, same ``k`` on every platform."""
     assert k_hash(F.compute(load(name), follow=follow).k) == PINNED[(name, follow)]
+
+
+@pytest.mark.parametrize("n", [4, 8])
+def test_k_survives_rounding_noise_on_a_symmetric_mesh(n: int) -> None:
+    """A quad sphere's faces tie in confidence, so the start face must not hang on a float's last bits.
+
+    Blender's modifiers give slightly different vertex floats on x64 and arm64; vertex noise of
+    1e-6 stands in for that here. Before ``SEED_BAND`` this changed ``k`` in most trials.
+    """
+    mesh = sm.quad_sphere(n)
+    k = F.compute(mesh).k
+    rng = np.random.default_rng(7)
+    for _ in range(20):
+        noisy = F.QuadMesh(mesh.vertices + rng.uniform(-1e-6, 1e-6, mesh.vertices.shape), mesh.faces)
+        assert np.array_equal(F.compute(noisy).k, k)
 
 
 @pytest.mark.parametrize(("name", "follow"), sorted(PINNED_GUIDED))
